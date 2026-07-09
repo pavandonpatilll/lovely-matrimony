@@ -1298,7 +1298,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/change-password",
+"https://lovely-matrimony.onrender.com/change-password",
 
 {
 
@@ -1366,7 +1366,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/premium-status/"+userId
+"https://lovely-matrimony.onrender.com/premium-status/"+userId
 
 );
 
@@ -1418,7 +1418,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/buy-premium",
+"https://lovely-matrimony.onrender.com/buy-premium",
 
 {
 
@@ -1468,7 +1468,7 @@ const userId = localStorage.getItem("userId");
 try{
 
 const response = await fetch(
-"http://127.0.0.1:8000/favorite",
+"https://lovely-matrimony.onrender.com/favorite",
 {
 method:"POST",
 
@@ -1507,7 +1507,7 @@ const userId = localStorage.getItem("userId");
 try{
 
 const response = await fetch(
-"http://127.0.0.1:8000/favorites/"+userId
+"https://lovely-matrimony.onrender.com/favorites/"+userId
 );
 
 const result = await response.json();
@@ -1540,7 +1540,7 @@ text-align:left;
 ">
 
 <img
-src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+src="${user.photo ? 'https://lovely-matrimony.onrender.com'+user.photo : ''}"
 style="
 width:80px;
 height:80px;
@@ -1591,7 +1591,7 @@ const userId = localStorage.getItem("userId");
 try{
 
 const response = await fetch(
-"http://127.0.0.1:8000/remove-favorite",
+"https://lovely-matrimony.onrender.com/remove-favorite",
 {
 
 method:"POST",
@@ -1638,7 +1638,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/notifications/"+userId
+"https://lovely-matrimony.onrender.com/notifications/"+userId
 
 );
 
@@ -1713,7 +1713,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/conversations/"+userId
+"https://lovely-matrimony.onrender.com/conversations/"+userId
 
 );
 
@@ -1841,7 +1841,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/chat/"+senderId+"/"+currentReceiver
+"https://lovely-matrimony.onrender.com/chat/"+senderId+"/"+currentReceiver
 
 );
 
@@ -1910,7 +1910,7 @@ const userId=localStorage.getItem("userId");
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/matches/"+userId);
+const response=await fetch("https://lovely-matrimony.onrender.com/matches/"+userId);
 
 const result=await response.json();
 
@@ -1942,7 +1942,7 @@ text-align:left;
 ">
 
 <img
-src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+src="${user.photo ? 'https://lovely-matrimony.onrender.com'+user.photo : ''}"
 style="
 width:80px;
 height:80px;
@@ -2011,7 +2011,7 @@ return;
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/send-interest",{
+const response=await fetch("https://lovely-matrimony.onrender.com/send-interest",{
 
 method:"POST",
 
@@ -2059,7 +2059,7 @@ const gender=document.getElementById("searchGender").value;
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/search",{
+const response=await fetch("https://lovely-matrimony.onrender.com/search",{
 
 method:"POST",
 
@@ -2125,7 +2125,7 @@ text-align:left;
 ">
 
 <img
-src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+src="${user.photo ? 'https://lovely-matrimony.onrender.com'+user.photo : ''}"
 style="
 width:80px;
 height:80px;
@@ -2221,7 +2221,7 @@ const userId=localStorage.getItem("userId");
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/received-interests/"+userId);
+const response=await fetch("https://lovely-matrimony.onrender.com/received-interests/"+userId);
 
 const result=await response.json();
 
@@ -2253,7 +2253,7 @@ text-align:left;
 ">
 
 <img
-src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+src="${user.photo ? 'https://lovely-matrimony.onrender.com'+user.photo : ''}"
 style="
 width:80px;
 height:80px;
@@ -2335,7 +2335,7 @@ return;
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/profile/"+userId);
+const response=await fetch("https://lovely-matrimony.onrender.com/profile/"+userId);
 
 const result=await response.json();
 
@@ -2347,7 +2347,7 @@ document.getElementById("profilePhoto").src=
 
 user.photo ?
 
-"http://127.0.0.1:8000"+user.photo
+"https://lovely-matrimony.onrender.com"+user.photo
 
 :
 
@@ -2400,7 +2400,7 @@ try{
 
 const response = await fetch(
 
-"http://127.0.0.1:8000/profile/"+userId
+"https://lovely-matrimony.onrender.com/profile/"+userId
 
 );
 
@@ -2493,7 +2493,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/update-profile",
+"https://lovely-matrimony.onrender.com/update-profile",
 
 {
 
@@ -2623,7 +2623,7 @@ const photo=localStorage.getItem("userPhoto");
 if(photo){
 
 document.getElementById("homeProfile").src=
-"http://127.0.0.1:8000"+photo;
+"https://lovely-matrimony.onrender.com"+photo;
 
 }
 
@@ -2648,7 +2648,7 @@ return;
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/login",{
+const response=await fetch("https://lovely-matrimony.onrender.com/login",{
 
 method:"POST",
 
@@ -2705,7 +2705,7 @@ document.getElementById("welcomeName").innerHTML=
 if(result.user.photo){
 
 document.getElementById("homeProfile").src=
-"http://127.0.0.1:8000"+result.user.photo;
+"https://lovely-matrimony.onrender.com"+result.user.photo;
 
 }else{
 
@@ -2887,7 +2887,7 @@ country:""
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/register",{
+const response=await fetch("https://lovely-matrimony.onrender.com/register",{
 
 method:"POST",
 
@@ -2907,7 +2907,7 @@ if(result.status){
 
 // Login karke user id le
 
-const loginResponse = await fetch("http://127.0.0.1:8000/login",{
+const loginResponse = await fetch("https://lovely-matrimony.onrender.com/login",{
 
 method:"POST",
 
@@ -2941,7 +2941,7 @@ formData.append("photo",file);
 
 await fetch(
 
-"http://127.0.0.1:8000/upload-profile-photo/"+userId,
+"https://lovely-matrimony.onrender.com/upload-profile-photo/"+userId,
 
 {
 
@@ -2982,7 +2982,7 @@ async function interestAction(interestId,status){
 
 try{
 
-const response=await fetch("http://127.0.0.1:8000/interest-action",{
+const response=await fetch("https://lovely-matrimony.onrender.com/interest-action",{
 
 method:"POST",
 
@@ -3031,7 +3031,7 @@ return;
 try{
 
 const response = await fetch(
-"http://127.0.0.1:8000/block-user",
+"https://lovely-matrimony.onrender.com/block-user",
 {
 
 method:"POST",
@@ -3076,7 +3076,7 @@ return;
 try{
 
 const response = await fetch(
-"http://127.0.0.1:8000/report-user",
+"https://lovely-matrimony.onrender.com/report-user",
 {
 
 method:"POST",
@@ -3117,7 +3117,7 @@ const userId = localStorage.getItem("userId");
 try{
 
 await fetch(
-"http://127.0.0.1:8000/profile-view",
+"https://lovely-matrimony.onrender.com/profile-view",
 {
 
 method:"POST",
@@ -3151,7 +3151,7 @@ saveProfileView(profileId);
 try{
 
 const response = await fetch(
-"http://127.0.0.1:8000/profile/"+profileId
+"https://lovely-matrimony.onrender.com/profile/"+profileId
 );
 
 const result = await response.json();
@@ -3170,7 +3170,7 @@ let html = `
 <div style="text-align:center;">
 
 <img
-src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+src="${user.photo ? 'https://lovely-matrimony.onrender.com'+user.photo : ''}"
 style="
 width:120px;
 height:120px;
@@ -3231,7 +3231,7 @@ try{
 
 const response=await fetch(
 
-"http://127.0.0.1:8000/send-message",
+"https://lovely-matrimony.onrender.com/send-message",
 
 {
 
