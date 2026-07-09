@@ -1,0 +1,3289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Matrimony App</title>
+
+<style>
+
+/* ========= RESET ========= */
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Arial,sans-serif;
+}
+
+body{
+
+background:linear-gradient(135deg,#ff4d6d,#ff85a2,#7b2cbf);
+
+min-height:100vh;
+
+display:flex;
+
+justify-content:center;
+
+align-items:center;
+
+padding:20px;
+
+}
+
+/* ========= CARD ========= */
+
+.card{
+
+width:100%;
+
+max-width:500px;
+
+background:white;
+
+border-radius:20px;
+
+padding:30px;
+
+box-shadow:0 15px 40px rgba(0,0,0,.25);
+
+animation:fade .5s;
+
+}
+
+@keyframes fade{
+
+from{
+
+opacity:0;
+transform:translateY(30px);
+
+}
+
+to{
+
+opacity:1;
+transform:translateY(0);
+
+}
+
+}
+
+.logo{
+
+font-size:32px;
+
+text-align:center;
+
+margin-bottom:10px;
+
+}
+
+.title{
+
+text-align:center;
+
+font-size:28px;
+
+font-weight:bold;
+
+color:#ff2d55;
+
+margin-bottom:5px;
+
+}
+
+.sub{
+
+text-align:center;
+
+color:#666;
+
+margin-bottom:25px;
+
+}
+
+.input{
+
+width:100%;
+
+padding:14px;
+
+margin-bottom:15px;
+
+border:1px solid #ddd;
+
+border-radius:12px;
+
+outline:none;
+
+font-size:15px;
+
+}
+
+.input:focus{
+
+border-color:#ff4d6d;
+
+}
+
+.btn{
+
+width:100%;
+
+padding:15px;
+
+border:none;
+
+border-radius:12px;
+
+background:#ff4d6d;
+
+color:white;
+
+font-size:17px;
+
+cursor:pointer;
+
+transition:.3s;
+
+}
+
+.btn:hover{
+
+background:#e60039;
+
+}
+
+.switch{
+
+text-align:center;
+
+margin-top:20px;
+
+}
+
+.switch span{
+
+color:#ff2d55;
+
+cursor:pointer;
+
+font-weight:bold;
+
+}
+
+.hidden{
+
+display:none;
+
+}
+
+.passBox{
+
+position:relative;
+
+margin-bottom:15px;
+
+}
+
+.passBox .input{
+
+margin-bottom:0;
+
+}
+
+.passBox span{
+
+position:absolute;
+
+right:15px;
+
+top:50%;
+
+transform:translateY(-50%);
+
+cursor:pointer;
+
+font-size:20px;
+
+}
+
+/* ================= HOME ================= */
+
+.topBar{
+
+height:60px;
+
+background:#ff4d6d;
+
+color:white;
+
+display:flex;
+
+justify-content:space-between;
+
+align-items:center;
+
+padding:0 20px;
+
+border-radius:15px;
+
+margin-bottom:20px;
+
+}
+
+.menuBtn{
+
+font-size:28px;
+
+cursor:pointer;
+
+}
+
+.notify{
+
+font-size:24px;
+
+cursor:pointer;
+
+}
+
+.appTitle{
+
+font-size:22px;
+
+font-weight:bold;
+
+}
+
+.homeContent{
+
+text-align:center;
+
+padding:30px;
+
+}
+
+.sideMenu{
+
+position:fixed;
+
+left:-280px;
+
+top:0;
+
+width:280px;
+
+height:100%;
+
+background:white;
+
+box-shadow:5px 0 20px rgba(0,0,0,.25);
+
+transition:.3s;
+
+z-index:999;
+
+padding:20px;
+
+overflow:auto;
+
+}
+
+.sideMenu.active{
+
+left:0;
+
+}
+
+.closeBtn{
+
+font-size:26px;
+
+cursor:pointer;
+
+text-align:right;
+
+margin-bottom:20px;
+
+}
+
+.menuItem{
+
+padding:15px;
+
+border-radius:10px;
+
+margin:8px 0;
+
+cursor:pointer;
+
+transition:.3s;
+
+}
+
+.menuItem:hover{
+
+background:#ffe5ec;
+
+}
+
+.logout{
+
+color:red;
+
+font-weight:bold;
+
+}
+
+#overlay{
+
+display:none;
+
+position:fixed;
+
+left:0;
+
+top:0;
+
+width:100%;
+
+height:100%;
+
+background:rgba(0,0,0,.4);
+
+z-index:998;
+
+}
+
+#overlay.active{
+
+display:block;
+
+}
+.welcomeCard{
+
+background:white;
+
+padding:25px;
+
+border-radius:20px;
+
+box-shadow:0 10px 25px rgba(0,0,0,.15);
+
+text-align:center;
+
+margin-bottom:20px;
+
+}
+
+.homeProfile{
+
+width:120px;
+
+height:120px;
+
+border-radius:50%;
+
+object-fit:cover;
+
+border:5px solid #ff4d6d;
+
+background:#eee;
+
+margin-bottom:15px;
+
+}
+
+.profileStatus{
+
+background:white;
+
+padding:20px;
+
+border-radius:20px;
+
+box-shadow:0 10px 25px rgba(0,0,0,.12);
+
+}
+
+.progressBar{
+
+width:100%;
+
+height:18px;
+
+background:#eee;
+
+border-radius:30px;
+
+overflow:hidden;
+
+margin-top:15px;
+
+}
+
+#progressFill{
+
+height:100%;
+
+width:40%;
+
+background:linear-gradient(90deg,#ff4d6d,#ff85a2);
+
+text-align:center;
+
+color:white;
+
+font-size:12px;
+
+line-height:18px;
+
+}
+
+/* ================= Bottom Navigation ================= */
+
+.bottomNav{
+
+position:fixed;
+
+left:0;
+
+bottom:0;
+
+width:100%;
+
+height:70px;
+
+background:#ffffff;
+
+display:flex;
+
+justify-content:space-around;
+
+align-items:center;
+
+box-shadow:0 -5px 20px rgba(0,0,0,.15);
+
+z-index:999;
+
+}
+
+.navItem{
+
+display:flex;
+
+flex-direction:column;
+
+align-items:center;
+
+justify-content:center;
+
+cursor:pointer;
+
+font-size:13px;
+
+color:#666;
+
+transition:.3s;
+
+font-weight:bold;
+
+}
+
+.navItem span{
+
+font-size:24px;
+
+margin-bottom:4px;
+
+}
+
+.navItem.active{
+
+color:#ff2d55;
+
+}
+
+.navItem:hover{
+
+color:#ff2d55;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="card">
+
+<div class="logo">❤️</div>
+
+<div class="title">JeevanSaathi</div>
+
+<div class="sub">Find Your Perfect Life Partner</div>
+
+<!-- REGISTER -->
+
+<div id="register">
+
+<input
+id="fullName"
+class="input"
+placeholder="Full Name">
+
+<input
+id="mobile"
+class="input"
+type="tel"
+maxlength="10"
+placeholder="Mobile Number">
+
+<select id="gender" class="input">
+
+<option value="">Select Gender</option>
+
+<option>Male</option>
+
+<option>Female</option>
+
+</select>
+
+<select id="lookingFor" class="input">
+
+<option value="">Looking For</option>
+
+<option>Bride</option>
+
+<option>Groom</option>
+
+</select>
+
+<input type="date" id="dob" class="input">
+
+<input id="age" class="input" placeholder="Age" readonly>
+
+<input
+id="height"
+class="input"
+placeholder="Height (e.g. 5'8&quot;)">
+
+<input
+id="religion"
+class="input"
+placeholder="Religion">
+
+<input
+id="caste"
+class="input"
+placeholder="Caste">
+
+<input
+id="education"
+class="input"
+placeholder="Education">
+
+<input
+id="occupation"
+class="input"
+placeholder="Occupation">
+
+<textarea
+id="about"
+class="input"
+placeholder="Tell something about yourself..."
+style="height:100px;resize:none;"></textarea>
+
+
+<label class="label">Profile Photo *</label>
+
+<input
+type="file"
+id="photo"
+accept="image/*"
+class="input">
+
+<img
+id="preview"
+src=""
+style="
+width:120px;
+height:120px;
+border-radius:50%;
+object-fit:cover;
+display:none;
+margin:15px auto;
+border:4px solid #ff4d6d;
+">
+
+<div class="passBox">
+
+<input
+type="password"
+id="pass"
+class="input"
+placeholder="Password">
+
+<span onclick="togglePass()">👁</span>
+
+</div>
+
+<div class="passBox">
+
+<input
+type="password"
+id="cpass"
+class="input"
+placeholder="Confirm Password">
+
+<span onclick="toggleCPass()">👁</span>
+
+</div>
+
+<button
+class="btn"
+onclick="registerUser()">
+
+Create Account ❤️
+
+</button>
+
+<div class="switch">
+
+Already have an account?
+
+<span onclick="showLogin()">Login</span>
+
+</div>
+
+</div>
+
+<!-- LOGIN -->
+
+<div id="login" class="hidden">
+
+<input
+id="loginMobile"
+class="input"
+type="tel"
+maxlength="10"
+placeholder="Mobile Number">
+
+<input
+id="loginPassword"
+class="input"
+type="password"
+placeholder="Password">
+
+<button
+class="btn"
+onclick="loginUser()">
+
+Login ❤️
+
+</button>
+
+<div class="switch">
+
+Don't have an account?
+
+<span onclick="showRegister()">Register</span>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- ================= HOME ================= -->
+
+<div id="home" class="hidden">
+
+<header class="topBar">
+
+<div class="menuBtn" onclick="openMenu()">☰</div>
+
+<div class="appTitle">❤️ JeevanSaathi</div>
+
+<div class="notify"
+onclick="showSection('notification');loadNotifications();">
+🔔
+</div>
+
+</header>
+
+<!-- Sidebar -->
+
+<div id="sideMenu" class="sideMenu">
+
+<div class="closeBtn" onclick="closeMenu()">✖</div>
+
+<h2>Menu</h2>
+
+<div class="menuItem" onclick="showSection('profile');loadProfile();closeMenu();">
+👤 My Profile
+</div>
+
+<div class="menuItem" onclick="showSection('editProfile');loadEditProfile();closeMenu();">
+✏ Edit Profile
+</div>
+
+<div class="menuItem" onclick="showSection('search');closeMenu();">
+🔍 Search Profiles
+</div>
+
+<div class="menuItem" onclick="showSection('matches');loadMatches();closeMenu();">
+❤️ My Matches
+</div>
+
+<div class="menuItem" onclick="showSection('interest');loadReceivedInterests();closeMenu();">
+💌 Interests
+</div>
+
+<div class="menuItem" onclick="showSection('chat');loadConversations();closeMenu();">
+💬 Chat
+</div>
+
+<div class="menuItem"
+onclick="showSection('favorite');loadFavorites();closeMenu();">
+⭐ Favorites
+</div>
+
+<div class="menuItem"
+onclick="showSection('notification');loadNotifications();closeMenu();">
+🔔 Notifications
+</div>
+
+<div class="menuItem" onclick="buyPremium();closeMenu();">
+⭐ Premium
+</div>
+
+<div class="menuItem" onclick="showSection('settings');closeMenu();">
+⚙ Settings
+</div>
+
+<div class="menuItem logout" onclick="logout();">
+🚪 Logout
+</div>
+</div>
+
+<!-- Overlay -->
+
+<div id="overlay" onclick="closeMenu()"></div>
+
+<!-- Welcome -->
+
+<div class="homeContent">
+
+<!-- ================= HOME SECTION ================= -->
+
+<div id="homeSection">
+
+<div class="welcomeCard">
+
+<img
+id="homeProfile"
+src=""
+class="homeProfile">
+
+<h2 id="welcomeName">
+
+Welcome
+
+</h2>
+
+<p id="welcomeText">
+
+Welcome to JeevanSaathi ❤️
+
+</p>
+
+</div>
+
+<div class="profileStatus">
+
+<h3>Profile Completion</h3>
+
+<div class="progressBar">
+
+<div id="progressFill">
+
+40%
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- ================= SEARCH ================= -->
+
+<div id="searchSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">🔍 Search Partner</h2>
+
+<select class="input" id="searchGender">
+<option value="">Gender</option>
+<option>Male</option>
+<option>Female</option>
+</select>
+
+<div style="display:flex;gap:10px;">
+
+<input
+id="ageFrom"
+class="input"
+type="number"
+placeholder="Age From">
+
+<input
+id="ageTo"
+class="input"
+type="number"
+placeholder="Age To">
+
+</div>
+
+<input
+id="searchReligion"
+class="input"
+placeholder="Religion">
+
+<input
+id="searchCaste"
+class="input"
+placeholder="Caste">
+
+<input
+id="searchEducation"
+class="input"
+placeholder="Education">
+
+<input
+id="searchOccupation"
+class="input"
+placeholder="Occupation">
+
+<input
+id="searchCity"
+class="input"
+placeholder="City">
+
+<button class="btn" onclick="searchPartner()">
+
+🔍 Search
+
+</button>
+
+<div
+id="searchResult"
+style="
+margin-top:20px;
+text-align:center;
+color:#666;
+">
+
+No Profiles Found
+
+</div>
+
+</div>
+
+<!-- ================= MATCHES ================= -->
+
+<div id="matchesSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">❤️ My Matches</h2>
+
+<div id="matchesList">
+
+No Matches Found
+
+</div>
+
+</div>
+
+
+<div id="interestSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">💌 Received Interests</h2>
+
+<div id="interestList">
+
+No Interests Found
+
+</div>
+
+</div>
+
+<div id="favoriteSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">
+
+⭐ My Favorites
+
+</h2>
+
+<div id="favoriteList">
+
+No Favorites
+
+</div>
+
+</div>
+
+<!-- ================= NOTIFICATIONS ================= -->
+
+<div id="notificationSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">
+🔔 Notifications
+</h2>
+
+<div id="notificationList">
+
+No Notifications
+
+</div>
+
+</div>
+
+
+<!-- ================= CHAT ================= -->
+
+<div id="chatSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">
+💬 Chats
+</h2>
+
+<div id="conversationList">
+
+No Conversations
+
+</div>
+
+<div
+id="chatBox"
+style="display:none;">
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+
+<h3 id="chatUserName"></h3>
+
+<button
+class="btn"
+style="width:80px;padding:8px;"
+onclick="closeChat()">
+
+← Back
+
+</button>
+
+</div>
+
+<div
+id="chatMessages"
+style="
+height:300px;
+overflow:auto;
+background:#fff;
+padding:10px;
+border-radius:10px;
+margin:15px 0;
+">
+
+</div>
+
+<div style="display:flex;gap:10px;">
+
+<input
+id="chatInput"
+class="input"
+style="margin:0;"
+placeholder="Type message...">
+
+<button
+class="btn"
+style="width:100px;"
+onclick="sendChat()">
+
+Send
+
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- ================= PROFILE ================= -->
+
+<div id="profileSection" class="hidden">
+
+<div class="welcomeCard">
+
+<img id="profilePhoto" class="homeProfile">
+
+<h2 id="profileName"></h2>
+
+</div>
+
+<div class="profileStatus">
+
+<p><b>📱 Mobile :</b> <span id="profileMobile"></span></p>
+
+<br>
+
+<p><b>👨 Gender :</b> <span id="profileGender"></span></p>
+
+<br>
+
+<p><b>💕 Looking For :</b> <span id="profileLooking"></span></p>
+
+<br>
+
+<p><b>🎂 Age :</b> <span id="profileAge"></span></p>
+
+<br>
+
+<p><b>📏 Height :</b> <span id="profileHeight"></span></p>
+
+<br>
+
+<p><b>🛕 Religion :</b> <span id="profileReligion"></span></p>
+
+<br>
+
+<p><b>👥 Caste :</b> <span id="profileCaste"></span></p>
+
+<br>
+
+<p><b>🎓 Education :</b> <span id="profileEducation"></span></p>
+
+<br>
+
+<p><b>💼 Occupation :</b> <span id="profileOccupation"></span></p>
+
+<br>
+
+<p><b>📝 About :</b></p>
+
+<p id="profileAbout"></p>
+
+</div>
+
+</div>
+
+<!-- ================= EDIT PROFILE ================= -->
+
+<div id="editProfileSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">
+✏ Edit Profile
+</h2>
+
+<input id="editName" class="input" placeholder="Name">
+
+<select id="editGender" class="input">
+<option value="Male">Male</option>
+<option value="Female">Female</option>
+</select>
+
+<select id="editLooking" class="input">
+<option value="Bride">Bride</option>
+<option value="Groom">Groom</option>
+</select>
+
+<input id="editDob" type="date" class="input">
+
+<input id="editAge" class="input" type="number" placeholder="Age">
+
+<input id="editHeight" class="input" placeholder="Height">
+
+<input id="editReligion" class="input" placeholder="Religion">
+
+<input id="editCaste" class="input" placeholder="Caste">
+
+<input id="editEducation" class="input" placeholder="Education">
+
+<input id="editOccupation" class="input" placeholder="Occupation">
+
+<textarea
+id="editAbout"
+class="input"
+placeholder="About Yourself"
+style="height:100px;"></textarea>
+
+<input id="editCity" class="input" placeholder="City">
+
+<input id="editState" class="input" placeholder="State">
+
+<input id="editCountry" class="input" placeholder="Country">
+
+<button
+class="btn"
+onclick="updateProfile()">
+
+💾 Save Profile
+
+</button>
+
+</div>
+
+<!-- ================= SETTINGS ================= -->
+
+<div id="settingsSection" class="hidden">
+
+<h2 style="margin-bottom:20px;">⚙ Settings</h2>
+
+<button
+class="btn"
+style="margin-bottom:15px;"
+onclick="showChangePassword()">
+
+🔑 Change Password
+
+</button>
+
+<button
+class="btn"
+style="margin-bottom:15px;"
+onclick="checkPremiumStatus()">
+
+⭐ Premium Status
+
+</button>
+
+<div
+style="
+background:white;
+padding:15px;
+border-radius:15px;
+margin-bottom:15px;
+">
+
+<b>Version :</b> 1.0
+
+</div>
+
+<button
+class="btn"
+style="background:red;"
+onclick="logout()">
+
+🚪 Logout
+
+</button>
+
+</div>
+
+<div id="changePasswordBox" class="hidden">
+
+<h2 style="margin-bottom:20px;">
+🔑 Change Password
+</h2>
+
+<input
+id="oldPassword"
+type="password"
+class="input"
+placeholder="Old Password">
+
+<input
+id="newPassword"
+type="password"
+class="input"
+placeholder="New Password">
+
+<input
+id="confirmNewPassword"
+type="password"
+class="input"
+placeholder="Confirm New Password">
+
+<button
+class="btn"
+onclick="changePassword()">
+
+💾 Change Password
+
+</button>
+
+</div>
+
+<!-- Bottom Navigation -->
+
+<div class="bottomNav">
+
+<div class="navItem active" onclick="showSection('home')">
+<span>🏠</span>
+Home
+</div>
+
+<div class="navItem" onclick="showSection('search')">
+<span>🔍</span>
+Search
+</div>
+
+<div class="navItem" onclick="showSection('matches');loadMatches();">
+<span>❤️</span>
+Matches
+</div>
+
+<div class="navItem" onclick="showSection('chat');loadConversations();">
+<span>💬</span>
+Chat
+</div>
+
+<div class="navItem" onclick="showSection('profile');loadProfile();">
+<span>👤</span>
+Profile
+</div>
+
+</div>
+
+<script>
+
+let currentReceiver=0;
+
+let currentReceiverName="";
+
+let chatInterval=null;  
+
+function showChangePassword(){
+
+showSection("settings");
+
+document.getElementById("changePasswordBox").classList.remove("hidden");
+
+}
+
+async function changePassword(){
+
+const oldPass=document.getElementById("oldPassword").value;
+
+const newPass=document.getElementById("newPassword").value;
+
+const confirm=document.getElementById("confirmNewPassword").value;
+
+if(oldPass=="" || newPass==""){
+
+alert("Please fill all fields.");
+
+return;
+
+}
+
+if(newPass!=confirm){
+
+alert("Passwords do not match.");
+
+return;
+
+}
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/change-password",
+
+{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify({
+
+user_id:parseInt(userId),
+
+old_password:oldPass,
+
+new_password:newPass
+
+})
+
+}
+
+);
+
+const result=await response.json();
+
+alert(result.message);
+
+if(result.status){
+
+document.getElementById("oldPassword").value="";
+
+document.getElementById("newPassword").value="";
+
+document.getElementById("confirmNewPassword").value="";
+
+document.getElementById("changePasswordBox").classList.add("hidden");
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+function logout(){
+
+localStorage.clear();
+
+location.reload();
+
+}
+
+async function checkPremiumStatus(){
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/premium-status/"+userId
+
+);
+
+const result=await response.json();
+
+if(!result.status){
+
+alert(result.message);
+
+return;
+
+}
+
+if(result.premium){
+
+alert("👑 Your Premium Membership is Active ❤️");
+
+}else{
+
+const buy=confirm(
+
+"You are not a Premium Member.\n\nDo you want to activate Premium?"
+
+);
+
+if(buy){
+
+buyPremium();
+
+}
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+async function buyPremium(){
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/buy-premium",
+
+{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify({
+
+user_id:parseInt(userId),
+
+plan:"Gold",
+
+amount:499,
+
+payment_id:"TEST_PAYMENT"
+
+})
+
+}
+
+);
+
+const result=await response.json();
+
+alert(result.message);
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to activate Premium.");
+
+}
+
+}
+
+
+async function addFavorite(receiverId){
+
+const userId = localStorage.getItem("userId");
+
+try{
+
+const response = await fetch(
+"http://127.0.0.1:8000/favorite",
+{
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(userId),
+
+receiver_id:receiverId
+
+})
+
+});
+
+const result = await response.json();
+
+alert(result.message);
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+async function loadFavorites(){
+
+const userId = localStorage.getItem("userId");
+
+try{
+
+const response = await fetch(
+"http://127.0.0.1:8000/favorites/"+userId
+);
+
+const result = await response.json();
+
+if(!result.status){
+
+return;
+
+}
+
+let html="";
+
+if(result.favorites.length===0){
+
+html="<h3>No Favorites Found ❤️</h3>";
+
+}else{
+
+result.favorites.forEach(user=>{
+
+html+=`
+
+<div style="
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:15px;
+box-shadow:0 5px 15px rgba(0,0,0,.1);
+text-align:left;
+">
+
+<img
+src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+style="
+width:80px;
+height:80px;
+border-radius:50%;
+object-fit:cover;
+border:3px solid #ff4d6d;
+">
+
+<h3>${user.name}</h3>
+
+<p>🎂 Age : ${user.age}</p>
+
+<p>📍 ${user.city}</p>
+
+<button
+class="btn"
+style="margin-top:15px;background:#dc3545;"
+onclick="removeFavorite(${user.id})">
+
+❌ Remove
+
+</button>
+
+</div>
+
+`;
+
+});
+
+}
+
+document.getElementById("favoriteList").innerHTML = html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load favorites.");
+
+}
+
+}
+
+async function removeFavorite(receiverId){
+
+const userId = localStorage.getItem("userId");
+
+try{
+
+const response = await fetch(
+"http://127.0.0.1:8000/remove-favorite",
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(userId),
+
+receiver_id:receiverId
+
+})
+
+});
+
+const result = await response.json();
+
+alert(result.message);
+
+if(result.status){
+
+loadFavorites();
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+async function loadNotifications(){
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/notifications/"+userId
+
+);
+
+const result=await response.json();
+
+if(!result.status){
+
+return;
+
+}
+
+let html="";
+
+if(result.notifications.length===0){
+
+html="<h3>No Notifications ❤️</h3>";
+
+}else{
+
+result.notifications.forEach(item=>{
+
+html+=`
+
+<div
+style="
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:15px;
+box-shadow:0 5px 15px rgba(0,0,0,.1);
+">
+
+<h3>${item.title}</h3>
+
+<p style="margin:8px 0;">
+
+${item.message}
+
+</p>
+
+<small>
+
+${item.created_at}
+
+</small>
+
+</div>
+
+`;
+
+});
+
+}
+
+document.getElementById("notificationList").innerHTML=html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load notifications.");
+
+}
+
+}
+
+async function loadConversations(){
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/conversations/"+userId
+
+);
+
+const result=await response.json();
+
+if(!result.status){
+
+return;
+
+}
+
+let html="";
+
+if(result.conversations.length===0){
+
+html="<h3>No Conversations Found ❤️</h3>";
+
+}else{
+
+result.conversations.forEach(user=>{
+
+html+=`
+
+<div
+style="
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:15px;
+box-shadow:0 5px 15px rgba(0,0,0,.1);
+cursor:pointer;
+display:flex;
+align-items:center;
+gap:15px;
+"
+onclick="openChat(${user.id},'${user.name}')">
+
+<img
+src="${user.photo || ''}"
+style="
+width:70px;
+height:70px;
+border-radius:50%;
+object-fit:cover;
+border:3px solid #ff4d6d;
+">
+
+<div>
+
+<h3>${user.name}</h3>
+
+<p>📍 ${user.city || ""}</p>
+
+</div>
+
+</div>
+
+`;
+
+});
+
+}
+
+document.getElementById("conversationList").innerHTML=html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load conversations.");
+
+}
+
+}
+
+
+async function openChat(receiverId,name){
+
+currentReceiver = receiverId;
+
+currentReceiverName = name;
+
+document.getElementById("conversationList").style.display = "none";
+
+document.getElementById("chatBox").style.display = "block";
+
+document.getElementById("chatUserName").innerHTML = "💬 " + name;
+
+// Purana timer band karo
+if(chatInterval){
+
+clearInterval(chatInterval);
+
+}
+
+// Pehli baar chat load karo
+loadChat();
+
+// Har 3 second me chat refresh hogi
+chatInterval = setInterval(loadChat,3000);
+
+}
+
+function closeChat(){
+
+document.getElementById("chatBox").style.display="none";
+
+document.getElementById("conversationList").style.display="block";
+
+if(chatInterval){
+
+clearInterval(chatInterval);
+
+chatInterval = null;
+
+}
+
+}
+
+async function loadChat(){
+
+const senderId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/chat/"+senderId+"/"+currentReceiver
+
+);
+
+const result=await response.json();
+
+if(!result.status){
+
+return;
+
+}
+
+let html="";
+
+result.messages.forEach(msg=>{
+
+const mine = msg.sender_id == parseInt(senderId);
+
+html+=`
+
+<div
+style="
+display:flex;
+justify-content:${mine?"flex-end":"flex-start"};
+margin:10px 0;
+">
+
+<div
+style="
+max-width:70%;
+padding:10px 15px;
+border-radius:15px;
+background:${mine?"#ff4d6d":"#eeeeee"};
+color:${mine?"white":"black"};
+">
+
+${msg.message}
+
+</div>
+
+</div>
+
+`;
+
+});
+
+document.getElementById("chatMessages").innerHTML=html;
+
+document.getElementById("chatMessages").scrollTop=
+
+document.getElementById("chatMessages").scrollHeight;
+
+}catch(error){
+
+console.log(error);
+
+}
+
+}
+
+
+
+
+async function loadMatches(){
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/matches/"+userId);
+
+const result=await response.json();
+
+if(!result.status){
+
+return;
+
+}
+
+let html="";
+
+if(result.matches.length===0){
+
+html="<h3>No Matches Found ❤️</h3>";
+
+}else{
+
+result.matches.forEach(user=>{
+
+html+=`
+
+<div style="
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:15px;
+box-shadow:0 5px 15px rgba(0,0,0,.1);
+text-align:left;
+">
+
+<img
+src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+style="
+width:80px;
+height:80px;
+border-radius:50%;
+object-fit:cover;
+border:3px solid #ff4d6d;
+">
+
+<h3>${user.name}</h3>
+
+<p>🎂 Age : ${user.age}</p>
+
+<p>📏 Height : ${user.height}</p>
+
+<p>🛕 Religion : ${user.religion}</p>
+
+<p>👥 Caste : ${user.caste}</p>
+
+<p>🎓 ${user.education}</p>
+
+<p>💼 ${user.occupation}</p>
+
+<p>📍 ${user.city}</p>
+
+<button
+class="btn"
+style="margin-top:15px;"
+onclick="openChat(${user.id},'${user.name}')">
+
+💬 Chat
+
+</button>
+
+</div>
+
+`;
+
+});
+
+}
+
+document.getElementById("matchesList").innerHTML=html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load matches.");
+
+}
+
+}
+
+
+async function sendInterest(receiverId){
+
+const senderId=localStorage.getItem("userId");
+
+if(!senderId){
+
+alert("Please login first.");
+
+return;
+
+}
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/send-interest",{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(senderId),
+
+receiver_id:receiverId
+
+})
+
+});
+
+const result=await response.json();
+
+if(result.status){
+
+alert("❤️ "+result.message);
+
+}else{
+
+alert(result.message);
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+async function searchPartner(){
+
+const userId=localStorage.getItem("userId");
+
+const gender=document.getElementById("searchGender").value;
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/search",{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify({
+
+user_id: parseInt(userId),
+
+gender: gender,
+
+age_from: parseInt(document.getElementById("ageFrom").value) || 0,
+
+age_to: parseInt(document.getElementById("ageTo").value) || 100,
+
+religion: document.getElementById("searchReligion").value,
+
+caste: document.getElementById("searchCaste").value,
+
+education: document.getElementById("searchEducation").value,
+
+occupation: document.getElementById("searchOccupation").value,
+
+city: document.getElementById("searchCity").value
+
+})
+
+});
+
+const result=await response.json();
+
+if(!result.status){
+
+alert("No Profiles Found");
+
+return;
+
+}
+
+let html="";
+
+if(result.profiles.length===0){
+
+html="<h3>No Profiles Found ❤️</h3>";
+
+}else{
+
+result.profiles.forEach(user=>{
+
+html+=`
+
+<div style="
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:15px;
+box-shadow:0 5px 15px rgba(0,0,0,.1);
+text-align:left;
+">
+
+<img
+src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+style="
+width:80px;
+height:80px;
+border-radius:50%;
+object-fit:cover;
+border:3px solid #ff4d6d;
+">
+
+<h3>${user.name}</h3>
+
+<p>🎂 Age : ${user.age}</p>
+
+<p>📏 Height : ${user.height}</p>
+
+<p>🛕 Religion : ${user.religion}</p>
+
+<p>👥 Caste : ${user.caste}</p>
+
+<p>🎓 Education : ${user.education}</p>
+
+<p>💼 Occupation : ${user.occupation}</p>
+
+<p>📍 ${user.city}</p>
+
+<button
+class="btn"
+onclick="sendInterest(${user.id})">
+
+❤️ Send Interest
+
+</button>
+
+<button
+class="btn"
+style="margin-top:10px;background:#ff9800;"
+onclick="addFavorite(${user.id})">
+
+⭐ Add Favorite
+
+</button>
+
+<button
+class="btn"
+style="margin-top:10px;background:#17a2b8;"
+onclick="viewProfile(${user.id})">
+
+👀 View Profile
+
+</button>
+
+<button
+class="btn"
+style="margin-top:10px;background:#6c757d;"
+onclick="blockUser(${user.id})">
+
+🚫 Block
+
+</button>
+
+<button
+class="btn"
+style="margin-top:10px;background:#dc3545;"
+onclick="reportUser(${user.id})">
+
+⚠ Report
+
+</button>
+
+</div>
+
+`;
+
+});
+
+}
+
+document.getElementById("searchResult").innerHTML=html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+
+async function loadReceivedInterests(){
+
+const userId=localStorage.getItem("userId");
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/received-interests/"+userId);
+
+const result=await response.json();
+
+if(!result.status){
+
+return;
+
+}
+
+let html="";
+
+if(result.interests.length===0){
+
+html="<h3>No Interests Received ❤️</h3>";
+
+}else{
+
+result.interests.forEach(user=>{
+
+html+=`
+
+<div style="
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:15px;
+box-shadow:0 5px 15px rgba(0,0,0,.1);
+text-align:left;
+">
+
+<img
+src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+style="
+width:80px;
+height:80px;
+border-radius:50%;
+object-fit:cover;
+border:3px solid #ff4d6d;
+">
+
+<h3>${user.name}</h3>
+
+<p>🎂 Age : ${user.age}</p>
+
+<p>📏 Height : ${user.height}</p>
+
+<p>🛕 Religion : ${user.religion}</p>
+
+<p>👥 Caste : ${user.caste}</p>
+
+<p>🎓 ${user.education}</p>
+
+<p>💼 ${user.occupation}</p>
+
+<p>📍 ${user.city}</p>
+
+<p><b>Status :</b> ${user.status}</p>
+
+<div style="margin-top:15px;">
+
+<button
+class="btn"
+style="margin-bottom:10px;background:#28a745;"
+onclick="interestAction(${user.interest_id},'Accepted')">
+
+✅ Accept
+
+</button>
+
+<button
+class="btn"
+style="background:#dc3545;"
+onclick="interestAction(${user.interest_id},'Rejected')">
+
+❌ Reject
+
+</button>
+
+</div>
+
+</div>
+
+`;
+
+});
+
+}
+
+document.getElementById("interestList").innerHTML=html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load interests.");
+
+}
+
+}
+
+
+async function loadProfile(){
+
+const userId=localStorage.getItem("userId");
+
+if(!userId){
+
+return;
+
+}
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/profile/"+userId);
+
+const result=await response.json();
+
+if(result.status){
+
+const user=result.profile;
+
+document.getElementById("profilePhoto").src=
+
+user.photo ?
+
+"http://127.0.0.1:8000"+user.photo
+
+:
+
+"";
+
+document.getElementById("profileName").innerHTML=user.name || "";
+
+document.getElementById("profileMobile").innerHTML=user.mobile || "";
+
+document.getElementById("profileGender").innerHTML=user.gender || "";
+
+document.getElementById("profileLooking").innerHTML=user.looking_for || "";
+
+document.getElementById("profileAge").innerHTML=user.age || "";
+
+document.getElementById("profileHeight").innerHTML=user.height || "";
+
+document.getElementById("profileReligion").innerHTML=user.religion || "";
+
+document.getElementById("profileCaste").innerHTML=user.caste || "";
+
+document.getElementById("profileEducation").innerHTML=user.education || "";
+
+document.getElementById("profileOccupation").innerHTML=user.occupation || "";
+
+document.getElementById("profileAbout").innerHTML=user.about || "";
+
+}else{
+
+alert(result.message);
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load profile.");
+
+}
+
+}
+
+
+async function loadEditProfile(){
+
+const userId = localStorage.getItem("userId");
+
+try{
+
+const response = await fetch(
+
+"http://127.0.0.1:8000/profile/"+userId
+
+);
+
+const result = await response.json();
+
+if(result.status){
+
+const user=result.profile;
+
+document.getElementById("editName").value = user.name || "";
+
+document.getElementById("editGender").value = user.gender || "";
+
+document.getElementById("editLooking").value = user.looking_for || "";
+
+document.getElementById("editDob").value = user.dob || "";
+
+document.getElementById("editAge").value = user.age || "";
+
+document.getElementById("editHeight").value = user.height || "";
+
+document.getElementById("editReligion").value = user.religion || "";
+
+document.getElementById("editCaste").value = user.caste || "";
+
+document.getElementById("editEducation").value = user.education || "";
+
+document.getElementById("editOccupation").value = user.occupation || "";
+
+document.getElementById("editAbout").value = user.about || "";
+
+document.getElementById("editCity").value = user.city || "";
+
+document.getElementById("editState").value = user.state || "";
+
+document.getElementById("editCountry").value = user.country || "";
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load profile.");
+
+}
+
+}
+
+
+async function updateProfile(){
+
+const userId = localStorage.getItem("userId");
+
+const data={
+
+user_id:parseInt(userId),
+
+name:document.getElementById("editName").value,
+
+gender:document.getElementById("editGender").value,
+
+looking_for:document.getElementById("editLooking").value,
+
+dob:document.getElementById("editDob").value,
+
+age:parseInt(document.getElementById("editAge").value)||0,
+
+height:document.getElementById("editHeight").value,
+
+religion:document.getElementById("editReligion").value,
+
+caste:document.getElementById("editCaste").value,
+
+education:document.getElementById("editEducation").value,
+
+occupation:document.getElementById("editOccupation").value,
+
+about:document.getElementById("editAbout").value,
+
+city:document.getElementById("editCity").value,
+
+state:document.getElementById("editState").value,
+
+country:document.getElementById("editCountry").value
+
+};
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/update-profile",
+
+{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify(data)
+
+}
+
+);
+
+const result=await response.json();
+
+if(result.status){
+
+alert(result.message+" ❤️");
+
+// Profile dobara load hogi
+loadProfile();
+
+// Home name update
+document.getElementById("welcomeName").innerHTML=
+"Welcome, "+data.name+" ❤️";
+
+// Local Storage update
+localStorage.setItem("userName",data.name);
+
+showSection("profile");
+
+}else{
+
+alert(result.message);
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+
+function showSection(page){
+
+const sections=[
+
+"homeSection",
+"searchSection",
+"matchesSection",
+"chatSection",
+"profileSection",
+"interestSection",
+"editProfileSection",
+"favoriteSection",
+"notificationSection",
+"settingsSection"
+
+];
+
+sections.forEach(id=>{
+
+document.getElementById(id).classList.add("hidden");
+
+});
+
+document.getElementById(page+"Section").classList.remove("hidden");
+
+document.querySelectorAll(".navItem").forEach(item=>{
+
+item.classList.remove("active");
+
+});
+
+if(event){
+
+event.currentTarget.classList.add("active");
+
+}
+
+}
+
+function openMenu(){
+
+document.getElementById("sideMenu").classList.add("active");
+
+document.getElementById("overlay").classList.add("active");
+
+}
+
+function closeMenu(){
+
+document.getElementById("sideMenu").classList.remove("active");
+
+document.getElementById("overlay").classList.remove("active");
+
+}
+
+function autoLogin(){
+
+const userId=localStorage.getItem("userId");
+
+if(!userId){
+
+return;
+
+}
+
+document.querySelector(".card").style.display="none";
+
+document.getElementById("home").classList.remove("hidden");
+
+document.getElementById("welcomeName").innerHTML=
+"Welcome, "+localStorage.getItem("userName")+" ❤️";
+
+const photo=localStorage.getItem("userPhoto");
+
+if(photo){
+
+document.getElementById("homeProfile").src=
+"http://127.0.0.1:8000"+photo;
+
+}
+
+loadProfile();
+showSection("home");
+
+}
+
+async function loginUser(){
+
+const mobile=document.getElementById("loginMobile").value.trim();
+
+const password=document.getElementById("loginPassword").value;
+
+if(mobile==="" || password===""){
+
+alert("Please enter Mobile Number and Password.");
+
+return;
+
+}
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/login",{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify({
+
+mobile:mobile,
+
+password:password
+
+})
+
+});
+
+const result=await response.json();
+
+if(result.status){
+
+// User Data Save
+
+localStorage.setItem("userId",result.user.id);
+
+localStorage.setItem("userName",result.user.name);
+
+localStorage.setItem("userMobile",result.user.mobile);
+
+localStorage.setItem("userGender",result.user.gender);
+
+localStorage.setItem("userLookingFor",result.user.looking_for);
+
+localStorage.setItem("userPhoto",result.user.photo || "");
+
+localStorage.setItem("userCity",result.user.city || "");
+
+// Home Open
+
+document.querySelector(".card").style.display="none";
+
+document.getElementById("home").classList.remove("hidden");
+
+// Welcome
+
+document.getElementById("welcomeName").innerHTML=
+
+"Welcome, "+result.user.name+" ❤️";
+
+// Profile Image
+
+if(result.user.photo){
+
+document.getElementById("homeProfile").src=
+"http://127.0.0.1:8000"+result.user.photo;
+
+}else{
+
+document.getElementById("homeProfile").src="";
+
+}
+
+alert(result.message+" ❤️");
+
+// Profile Load
+
+loadProfile();
+
+}else{
+
+alert(result.message);
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}  
+
+// Photo Preview
+
+const photo=document.getElementById("photo");
+const preview=document.getElementById("preview");
+
+photo.addEventListener("change",function(){
+
+const file=this.files[0];
+
+if(!file){
+
+preview.style.display="none";
+
+return;
+
+}
+
+preview.src=URL.createObjectURL(file);
+
+preview.style.display="block";
+
+});
+
+// Password
+
+function togglePass(){
+
+let p=document.getElementById("pass");
+
+p.type=p.type=="password"?"text":"password";
+
+}
+
+function toggleCPass(){
+
+let p=document.getElementById("cpass");
+
+p.type=p.type=="password"?"text":"password";
+
+}
+
+function showLogin(){
+
+document.getElementById("register").classList.add("hidden");
+
+document.getElementById("login").classList.remove("hidden");
+
+}
+
+function showRegister(){
+
+document.getElementById("login").classList.add("hidden");
+
+document.getElementById("register").classList.remove("hidden");
+
+}
+
+document.getElementById("dob").addEventListener("change",function(){
+
+let dob=new Date(this.value);
+
+let today=new Date();
+
+let age=today.getFullYear()-dob.getFullYear();
+
+let m=today.getMonth()-dob.getMonth();
+
+if(m<0 || (m===0 && today.getDate()<dob.getDate()))
+
+age--;
+
+document.getElementById("age").value=age;
+
+});
+
+async function registerUser(){
+
+const name=document.getElementById("fullName").value.trim();
+const mobile=document.getElementById("mobile").value.trim();
+const pass=document.getElementById("pass").value;
+const cpass=document.getElementById("cpass").value;
+
+if(name===""){
+
+alert("Please enter your name.");
+
+return;
+
+}
+
+if(!/^[0-9]{10}$/.test(mobile)){
+
+alert("Please enter a valid 10-digit mobile number.");
+
+return;
+
+}
+
+if(pass.length<6){
+
+alert("Password must be at least 6 characters.");
+
+return;
+
+}
+
+if(pass!==cpass){
+
+alert("Passwords do not match.");
+
+return;
+
+}
+
+const userData={
+
+name:name,
+
+mobile:mobile,
+
+password:pass,
+
+gender:document.getElementById("gender").value,
+
+looking_for:document.getElementById("lookingFor").value,
+
+dob:document.getElementById("dob").value,
+
+age:parseInt(document.getElementById("age").value)||0,
+
+height:document.getElementById("height").value,
+
+religion:document.getElementById("religion").value,
+
+caste:document.getElementById("caste").value,
+
+education:document.getElementById("education").value,
+
+occupation:document.getElementById("occupation").value,
+
+about:document.getElementById("about").value,
+
+city:"",
+
+state:"",
+
+country:""
+
+};
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/register",{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify(userData)
+
+});
+
+const result=await response.json();
+
+if(result.status){
+
+// Login karke user id le
+
+const loginResponse = await fetch("http://127.0.0.1:8000/login",{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+mobile:mobile,
+
+password:pass
+
+})
+
+});
+
+const loginResult = await loginResponse.json();
+
+if(loginResult.status){
+
+const userId = loginResult.user.id;
+
+const file = document.getElementById("photo").files[0];
+
+if(file){
+
+const formData = new FormData();
+
+formData.append("photo",file);
+
+await fetch(
+
+"http://127.0.0.1:8000/upload-profile-photo/"+userId,
+
+{
+
+method:"POST",
+
+body:formData
+
+}
+
+);
+
+}
+
+}
+
+alert("Registration Successful ❤️");
+
+showLogin();
+
+}else{
+
+alert(result.message);
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+
+async function interestAction(interestId,status){
+
+try{
+
+const response=await fetch("http://127.0.0.1:8000/interest-action",{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+interest_id:interestId,
+
+status:status
+
+})
+
+});
+
+const result=await response.json();
+
+alert(result.message);
+
+if(result.status){
+
+loadReceivedInterests();
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+async function blockUser(receiverId){
+
+const userId = localStorage.getItem("userId");
+
+if(!confirm("Block this user?")){
+return;
+}
+
+try{
+
+const response = await fetch(
+"http://127.0.0.1:8000/block-user",
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(userId),
+
+receiver_id:receiverId
+
+})
+
+});
+
+const result = await response.json();
+
+alert(result.message);
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+
+async function reportUser(receiverId){
+
+const userId = localStorage.getItem("userId");
+
+if(!confirm("Report this user?")){
+return;
+}
+
+try{
+
+const response = await fetch(
+"http://127.0.0.1:8000/report-user",
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(userId),
+
+receiver_id:receiverId
+
+})
+
+});
+
+const result = await response.json();
+
+alert(result.message);
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to connect to server.");
+
+}
+
+}
+
+
+async function saveProfileView(profileId){
+
+const userId = localStorage.getItem("userId");
+
+try{
+
+await fetch(
+"http://127.0.0.1:8000/profile-view",
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(userId),
+
+receiver_id:profileId
+
+})
+
+});
+
+}catch(error){
+
+console.log(error);
+
+}
+
+}
+
+async function viewProfile(profileId){
+
+saveProfileView(profileId);
+
+try{
+
+const response = await fetch(
+"http://127.0.0.1:8000/profile/"+profileId
+);
+
+const result = await response.json();
+
+if(!result.status){
+
+alert(result.message);
+
+return;
+
+}
+
+const user = result.profile;
+
+let html = `
+<div style="text-align:center;">
+
+<img
+src="${user.photo ? 'http://127.0.0.1:8000'+user.photo : ''}"
+style="
+width:120px;
+height:120px;
+border-radius:50%;
+object-fit:cover;
+border:4px solid #ff4d6d;
+">
+
+<h2>${user.name}</h2>
+
+<p>🎂 ${user.age}</p>
+
+<p>📏 ${user.height}</p>
+
+<p>🛕 ${user.religion}</p>
+
+<p>👥 ${user.caste}</p>
+
+<p>🎓 ${user.education}</p>
+
+<p>💼 ${user.occupation}</p>
+
+<p>📍 ${user.city}</p>
+
+<p style="margin-top:15px;">
+${user.about || ""}
+</p>
+
+</div>
+`;
+
+document.getElementById("searchResult").innerHTML = html;
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to load profile.");
+
+}
+
+}
+
+
+async function sendChat(){
+
+const senderId=localStorage.getItem("userId");
+
+const message=document.getElementById("chatInput").value.trim();
+
+if(message===""){
+
+return;
+
+}
+
+try{
+
+const response=await fetch(
+
+"http://127.0.0.1:8000/send-message",
+
+{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify({
+
+sender_id:parseInt(senderId),
+
+receiver_id:currentReceiver,
+
+message:message
+
+})
+
+}
+
+);
+
+const result=await response.json();
+
+if(result.status){
+
+document.getElementById("chatInput").value="";
+
+loadChat();
+
+}else{
+
+alert(result.message);
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Unable to send message.");
+
+}
+
+}
+autoLogin();
+
+</script>
+
+</body>
+
+</html>
