@@ -2122,72 +2122,56 @@ def notifications(user_id:int):
 # =====================================================
 
 @app.post("/buy-premium")
-
 def buy_premium(data: PremiumModel):
 
-    cursor.execute(
+    try:
 
-        """
-        INSERT INTO premium(
-
-        user_id,
-        plan,
-        amount,
-        payment_id,
-        payment_status,
-        status
-
+        cursor.execute(
+            """
+            INSERT INTO premium(
+                user_id,
+                plan,
+                amount,
+                payment_id,
+                payment_status,
+                status
+            )
+            VALUES(?,?,?,?,?,?)
+            """,
+            (
+                data.user_id,
+                data.plan,
+                data.amount,
+                data.payment_id,
+                "Success",
+                "Active"
+            )
         )
 
-        VALUES(
-
-        ?,?,?,?,?,?
-
-        )
-        """,
-
-        (
-
-            data.user_id,
-            data.plan,
-            data.amount,
-            data.payment_id,
-            "Success",
-            "Active"
-
+        cursor.execute(
+            """
+            UPDATE users
+            SET is_premium=1
+            WHERE id=?
+            """,
+            (data.user_id,)
         )
 
-    )
+        conn.commit()
 
-    cursor.execute(
+        return {
+            "status": True,
+            "message": "Premium Activated"
+        }
 
-        """
+    except Exception as e:
 
-        UPDATE users
+        conn.rollback()
 
-        SET is_premium=1
-
-        WHERE id=?
-
-        """,
-
-        (
-
-            data.user_id,
-
-        )
-
-    )
-
-    conn.commit()
-
-    return{
-
-        "status":True,
-
-        "message":"Premium Activated"
-
-    }
+        return {
+            "status": False,
+            "message": str(e)
+        }
 
 
 # =====================================================
