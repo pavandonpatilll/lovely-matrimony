@@ -313,6 +313,33 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 conn.commit()
 
+try:
+    cursor.execute("ALTER TABLE premium ADD COLUMN amount REAL")
+except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE premium ADD COLUMN payment_status TEXT")
+except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE premium ADD COLUMN status TEXT")
+except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE premium ADD COLUMN start_date TEXT")
+except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE premium ADD COLUMN end_date TEXT")
+except:
+    pass
+
+conn.commit()
+
 # =====================================================
 # MODELS
 # =====================================================
