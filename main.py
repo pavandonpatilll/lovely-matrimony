@@ -2030,6 +2030,53 @@ def report_user(data: InterestModel):
     }
 
 
+@app.get("/admin/reports")
+def admin_reports():
+
+    cursor.execute("""
+
+    SELECT
+
+    reports.id,
+    u1.name,
+    u2.name,
+    reports.reason
+
+    FROM reports
+
+    JOIN users u1
+    ON reports.reporter_id=u1.id
+
+    JOIN users u2
+    ON reports.reported_id=u2.id
+
+    ORDER BY reports.id DESC
+
+    """)
+
+    rows = cursor.fetchall()
+
+    reports=[]
+
+    for row in rows:
+
+        reports.append({
+
+            "id":row[0],
+            "reporter":row[1],
+            "reported":row[2],
+            "reason":row[3]
+
+        })
+
+    return{
+
+        "status":True,
+
+        "reports":reports
+
+    }
+
 # =====================================================
 # NOTIFICATIONS
 # =====================================================
