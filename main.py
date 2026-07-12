@@ -2401,6 +2401,29 @@ def admin_premium_users():
     }
 
 # =====================================================
+# MAKE USER PREMIUM (ADMIN)
+# =====================================================
+
+@app.post("/admin/make-premium/{user_id}")
+def make_premium(user_id: int):
+
+    cursor.execute(
+        """
+        UPDATE users
+        SET is_premium=1
+        WHERE id=?
+        """,
+        (user_id,)
+    )
+
+    conn.commit()
+
+    return {
+        "status": True,
+        "message": "User is now Premium 👑"
+    }
+
+# =====================================================
 # DELETE USER
 # =====================================================
 
