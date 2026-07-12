@@ -2376,6 +2376,29 @@ def admin_users():
 
     }
 
+@app.get("/admin/premium-users")
+def admin_premium_users():
+
+    cursor.execute("""
+        SELECT
+        id,
+        name,
+        mobile,
+        city,
+        photo
+        FROM users
+        WHERE is_premium=1
+        ORDER BY id DESC
+    """)
+
+    rows = cursor.fetchall()
+
+    users = [dict(row) for row in rows]
+
+    return {
+        "status": True,
+        "users": users
+    }
 
 # =====================================================
 # DELETE USER

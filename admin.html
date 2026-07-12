@@ -198,9 +198,12 @@ onclick="loadUsers()">
 <p>Total Users</p>
 </div>
 
-<div class="card">
+<div class="card" onclick="openPremiumUsers()" style="cursor:pointer;">
+
 <h2 id="totalPremium">0</h2>
-<p>Premium Users</p>
+
+<p>👑 Premium Users</p>
+
 </div>
 
 <div class="card">
@@ -290,6 +293,91 @@ No Reports
 
 
 <script>
+
+async function loadPremiumUsers(){
+
+    try{
+
+        const response = await fetch(API + "/admin/premium-users");
+
+        const result = await response.json();
+
+        let html = "";
+
+        if(result.users.length===0){
+
+            html = `
+            <tr>
+                <td colspan="5" style="text-align:center;">
+                    No Premium Users 👑
+                </td>
+            </tr>
+            `;
+
+        }else{
+
+            result.users.forEach(user=>{
+
+                html += `
+
+                <tr>
+
+                <td>${user.id}</td>
+
+                <td>
+
+                <img
+                src="${user.photo ? API+user.photo : ''}"
+                style="
+                width:60px;
+                height:60px;
+                border-radius:50%;
+                object-fit:cover;
+                ">
+
+                </td>
+
+                <td>${user.name}</td>
+
+                <td>${user.mobile}</td>
+
+                <td>${user.city || "-"}</td>
+
+                </tr>
+
+                `;
+
+            });
+
+        }
+
+        document.getElementById("premiumTable").innerHTML = html;
+
+    }catch(error){
+
+        console.log(error);
+
+        alert("Unable to load Premium Users");
+
+    }
+
+}
+
+
+function openPremiumUsers(){
+
+document.getElementById("premiumPopup").style.display="block";
+
+loadPremiumUsers();
+
+}
+
+function closePremiumUsers(){
+
+document.getElementById("premiumPopup").style.display="none";
+
+}
+
 
 async function loadReports(){
 
@@ -629,7 +717,7 @@ return;
 
             <td>
 
-            ${user.premium ? "👑 Premium" : "Free"}
+            ${user.is_premium ? "👑 Premium" : "Free"}
 
             </td>
 
@@ -679,7 +767,7 @@ onclick="deleteUser(${user.id})">
 
         document.getElementById("totalUsers").innerHTML = result.users.length;
 
-        let premiumCount = result.users.filter(user => user.premium).length;
+        let premiumCount = result.users.filter(user => user.is_premium).length;
 
         document.getElementById("totalPremium").innerHTML = premiumCount;
 
@@ -700,6 +788,7 @@ onclick="deleteUser(${user.id})">
 }
 
 loadUsers();
+loadReports();
 
 setInterval(function(){
 
@@ -756,6 +845,79 @@ cursor:pointer;
 </button>
 
 <div id="viewData"></div>
+
+</div>
+
+</div>
+
+<div id="premiumPopup"
+style="
+display:none;
+position:fixed;
+left:0;
+top:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,.6);
+z-index:9999;
+">
+
+<div
+style="
+background:white;
+width:95%;
+max-width:900px;
+margin:30px auto;
+padding:20px;
+border-radius:15px;
+max-height:90vh;
+overflow:auto;
+position:relative;
+">
+
+<button
+onclick="closePremiumUsers()"
+style="
+position:absolute;
+right:15px;
+top:15px;
+background:red;
+color:white;
+border:none;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+">
+
+✖
+
+</button>
+
+<h2 style="margin-bottom:20px;">
+👑 Premium Members
+</h2>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ID</th>
+<th>Photo</th>
+<th>Name</th>
+<th>Mobile</th>
+<th>City</th>
+
+</tr>
+
+</thead>
+
+<tbody id="premiumTable">
+
+</tbody>
+
+</table>
 
 </div>
 
