@@ -2614,7 +2614,6 @@ def delete_user(user_id:int):
 # =====================================================
 
 @app.get("/admin/matches")
-
 def admin_matches():
 
     cursor.execute("""
@@ -2623,20 +2622,18 @@ def admin_matches():
 
     interests.id,
 
-    u1.name AS boy,
+    u1.name AS male,
 
-    u2.name AS girl,
+    u2.name AS female,
 
     interests.created_at
 
     FROM interests
 
     JOIN users u1
-
     ON interests.sender_id = u1.id
 
     JOIN users u2
-
     ON interests.receiver_id = u2.id
 
     WHERE interests.status='Accepted'
@@ -2647,12 +2644,9 @@ def admin_matches():
 
     data = cursor.fetchall()
 
-    return{
-
-        "status":True,
-
-        "matches":[dict(i) for i in data]
-
+    return {
+        "status": True,
+        "matches": [dict(i) for i in data]
     }
 
 # =====================================================
