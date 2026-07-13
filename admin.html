@@ -392,6 +392,40 @@ No Reports
 
 <script>
 
+async function openMatches(){
+
+document.getElementById("matchesPopup").style.display="flex";
+
+let res = await fetch(API + "/admin/matches");
+
+let data = await res.json();
+
+let html = "";
+
+data.matches.forEach(m=>{
+
+html += `
+<tr>
+<td>${m.id}</td>
+<td>${m.male}</td>
+<td>${m.female}</td>
+<td>${m.created_at}</td>
+</tr>
+`;
+
+});
+
+document.getElementById("matchesTable").innerHTML = html;
+
+}
+
+function closeMatches(){
+
+document.getElementById("matchesPopup").style.display="none";
+
+}
+
+
 function openReports(){
 
 document.getElementById("reportsPopup").style.display="block";
@@ -967,7 +1001,7 @@ onclick="deleteUser(${user.id})">
 
 loadUsers();
 loadReports();
-
+loadMatches();
 setInterval(function(){
 
 loadUsers();
@@ -1092,6 +1126,37 @@ cursor:pointer;
 </thead>
 
 <tbody id="premiumTable">
+
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+<div id="matchesPopup" class="popup">
+
+<div class="popupContent">
+
+<h2>❤️ Total Matches</h2>
+
+<button class="closeBtn" onclick="closeMatches()">✖</button>
+
+<table style="width:100%;border-collapse:collapse;">
+
+<thead>
+
+<tr>
+<th>ID</th>
+<th>Male</th>
+<th>Female</th>
+<th>Date</th>
+</tr>
+
+</thead>
+
+<tbody id="matchesTable">
 
 </tbody>
 
