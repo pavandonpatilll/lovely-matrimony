@@ -2622,9 +2622,15 @@ def admin_matches():
 
     interests.id,
 
-    u1.name AS male,
+    CASE
+        WHEN u1.gender = 'Male' THEN u1.name
+        ELSE u2.name
+    END AS male,
 
-    u2.name AS female,
+    CASE
+        WHEN u1.gender = 'Female' THEN u1.name
+        ELSE u2.name
+    END AS female,
 
     interests.created_at
 
@@ -2636,7 +2642,7 @@ def admin_matches():
     JOIN users u2
     ON interests.receiver_id = u2.id
 
-    WHERE interests.status='Accepted'
+    WHERE interests.status = 'Accepted'
 
     ORDER BY interests.id DESC
 
