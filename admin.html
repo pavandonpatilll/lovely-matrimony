@@ -392,39 +392,77 @@ No Reports
 
 <script>
 
-async function openMatches(){
+async function loadMatches(){
 
-document.getElementById("matchesPopup").style.display="flex";
+    try{
 
-let res = await fetch(API + "/admin/matches");
+        const response = await fetch(API + "/admin/matches");
 
-let data = await res.json();
+        const result = await response.json();
 
-let html = "";
+        let html = "";
 
-data.matches.forEach(m=>{
+        if(result.matches.length===0){
 
-html += `
-<tr>
-<td>${m.id}</td>
-<td>${m.male}</td>
-<td>${m.female}</td>
-<td>${m.created_at}</td>
-</tr>
-`;
+            html = `
+            <tr>
+                <td colspan="4" style="text-align:center;">
+                    No Matches ❤️
+                </td>
+            </tr>
+            `;
 
-});
+        }else{
 
-document.getElementById("matchesTable").innerHTML = html;
+            result.matches.forEach(match=>{
+
+                html += `
+
+                <tr>
+
+                    <td>${match.id}</td>
+
+                    <td>${match.male}</td>
+
+                    <td>${match.female}</td>
+
+                    <td>${match.created_at}</td>
+
+                </tr>
+
+                `;
+
+            });
+
+        }
+
+        document.getElementById("matchesTable").innerHTML = html;
+
+        document.getElementById("totalMatches").innerText = result.matches.length;
+
+    }catch(error){
+
+        console.log(error);
+
+        alert("Unable to load Matches");
+
+    }
+
+}
+
+function openMatches(){
+
+    document.getElementById("matchesPopup").style.display="block";
+
+    loadMatches();
 
 }
 
 function closeMatches(){
 
-document.getElementById("matchesPopup").style.display="none";
+    document.getElementById("matchesPopup").style.display="none";
 
 }
-
 
 function openReports(){
 
@@ -1135,28 +1173,79 @@ cursor:pointer;
 
 </div>
 
-<div id="matchesPopup" class="popup">
+<div id="matchesPopup"
+style="
+display:none;
+position:fixed;
+left:0;
+top:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,.6);
+z-index:9999;
+">
 
-<div class="popupContent">
+<div
+style="
+background:white;
+width:90%;
+max-width:900px;
+margin:40px auto;
+padding:20px;
+border-radius:15px;
+max-height:90vh;
+overflow:auto;
+position:relative;
+">
 
-<h2>❤️ Total Matches</h2>
+<button
+onclick="closeMatches()"
+style="
+position:absolute;
+right:15px;
+top:15px;
+background:red;
+color:white;
+border:none;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+">
 
-<button class="closeBtn" onclick="closeMatches()">✖</button>
+✖
 
-<table style="width:100%;border-collapse:collapse;">
+</button>
+
+<h2 style="margin-bottom:20px;">
+❤️ Total Matches
+</h2>
+
+<table>
 
 <thead>
 
 <tr>
+
 <th>ID</th>
 <th>Male</th>
 <th>Female</th>
-<th>Date</th>
+<th>Matched On</th>
+
 </tr>
 
 </thead>
 
 <tbody id="matchesTable">
+
+<tr>
+
+<td colspan="4" style="text-align:center;">
+
+No Matches
+
+</td>
+
+</tr>
 
 </tbody>
 
