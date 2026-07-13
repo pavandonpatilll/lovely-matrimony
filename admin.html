@@ -206,14 +206,20 @@ onclick="loadUsers()">
 
 </div>
 
-<div class="card">
+<div class="card" onclick="openMatches()" style="cursor:pointer;">
+
 <h2 id="totalMatches">0</h2>
+
 <p>Total Matches</p>
+
 </div>
 
-<div class="card">
+<div class="card" onclick="openReports()" style="cursor:pointer;">
+
 <h2 id="totalReports">0</h2>
+
 <p>Reports</p>
+
 </div>
 
 </div>
@@ -300,7 +306,48 @@ padding:12px 25px;
 
 </div>
 
-<div class="section">
+<div id="reportsPopup"
+style="
+display:none;
+position:fixed;
+left:0;
+top:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,.6);
+z-index:9999;
+">
+
+<div
+style="
+background:white;
+width:90%;
+max-width:900px;
+margin:40px auto;
+padding:20px;
+border-radius:15px;
+max-height:90vh;
+overflow:auto;
+position:relative;
+">
+
+<button
+onclick="closeReports()"
+style="
+position:absolute;
+right:15px;
+top:15px;
+background:red;
+color:white;
+border:none;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+">
+
+✖
+
+</button>
 
 <h2 style="margin-bottom:20px;">
 🚩 Reported Users
@@ -322,12 +369,14 @@ padding:12px 25px;
 
 </thead>
 
-<tbody id="reportTable">
+<tbody id="reportsTablePopup">
 
 <tr>
 
 <td colspan="5" style="text-align:center;">
+
 No Reports
+
 </td>
 
 </tr>
@@ -338,8 +387,25 @@ No Reports
 
 </div>
 
+</div>
+
 
 <script>
+
+function openReports(){
+
+document.getElementById("reportsPopup").style.display="block";
+
+loadReports();
+
+}
+
+function closeReports(){
+
+document.getElementById("reportsPopup").style.display="none";
+
+}
+
 
 async function sendNotification(){
 
@@ -404,7 +470,7 @@ alert("Server Error");
 }
 
 }
-    
+
 
 async function loadPremiumUsers(){
 
@@ -561,7 +627,7 @@ async function loadReports(){
 
         }
 
-        document.getElementById("reportTable").innerHTML = html;
+        document.getElementById("reportsTablePopup").innerHTML = html;
 
         document.getElementById("totalReports").innerHTML = result.reports.length;
 

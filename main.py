@@ -2610,6 +2610,52 @@ def delete_user(user_id:int):
 
 
 # =====================================================
+# ADMIN ALL MATCHES
+# =====================================================
+
+@app.get("/admin/matches")
+
+def admin_matches():
+
+    cursor.execute("""
+
+    SELECT
+
+    interests.id,
+
+    u1.name AS boy,
+
+    u2.name AS girl,
+
+    interests.created_at
+
+    FROM interests
+
+    JOIN users u1
+
+    ON interests.sender_id = u1.id
+
+    JOIN users u2
+
+    ON interests.receiver_id = u2.id
+
+    WHERE interests.status='Accepted'
+
+    ORDER BY interests.id DESC
+
+    """)
+
+    data = cursor.fetchall()
+
+    return{
+
+        "status":True,
+
+        "matches":[dict(i) for i in data]
+
+    }
+
+# =====================================================
 # MY MATCHES
 # =====================================================
 
