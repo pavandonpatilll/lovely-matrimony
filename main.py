@@ -460,6 +460,13 @@ class AdminLoginModel(BaseModel):
     username: str
     password: str
 
+
+class NotificationModel(BaseModel):
+
+    title: str
+
+    message: str
+
 # =====================================================
 # HELPER FUNCTIONS
 # =====================================================
@@ -2108,15 +2115,27 @@ def admin_reports():
 # NOTIFICATIONS
 # =====================================================
 
+# =====================================================
+# MY NOTIFICATIONS
+# =====================================================
+
 @app.get("/notifications/{user_id}")
 
-def notifications(user_id:int):
+def my_notifications(user_id: int):
 
     cursor.execute(
 
         """
 
-        SELECT *
+        SELECT
+
+        id,
+
+        title,
+
+        message,
+
+        created_at
 
         FROM notifications
 
@@ -2134,7 +2153,7 @@ def notifications(user_id:int):
 
     )
 
-    data=cursor.fetchall()
+    data = cursor.fetchall()
 
     return{
 
@@ -2432,6 +2451,74 @@ def make_premium(user_id: int):
     return {
         "status": True,
         "message": "User is now Premium 👑"
+    }
+
+# =====================================================
+# SEND NOTIFICATION TO ALL USERS
+# =====================================================
+
+@app.post("/admin/send-notification")
+
+def send_notification(data: NotificationModel):
+
+    cursor.execute(
+
+        """
+
+        SELECT id
+
+        FROM users
+
+        """
+
+    )
+
+    users = cursor.fetchall()
+
+    for user in users:
+
+        cursor.execute(
+
+            """
+
+            INSERT INTO notifications(
+
+            user_id,
+
+            title,
+
+            message
+
+            )
+
+            VALUES(
+
+            ?,?,?
+
+            )
+
+            """,
+
+            (
+
+                user["id"],
+
+                data.title,
+
+                data.message
+
+            )
+
+        )
+
+    conn.commit()
+
+    return{
+
+        "status":True,
+
+        "message":"Notification Sent Successfully"
+
     }
 
 # =====================================================

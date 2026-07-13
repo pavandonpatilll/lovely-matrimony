@@ -221,6 +221,53 @@ onclick="loadUsers()">
 <div class="section">
 
 <h2 style="margin-bottom:20px;">
+
+🔔 Send Notification
+
+</h2>
+
+<input
+id="notificationTitle"
+type="text"
+placeholder="Notification Title"
+style="
+width:100%;
+padding:12px;
+margin-bottom:10px;
+border:1px solid #ccc;
+border-radius:8px;
+">
+
+<textarea
+id="notificationMessage"
+placeholder="Notification Message"
+style="
+width:100%;
+height:120px;
+padding:12px;
+border:1px solid #ccc;
+border-radius:8px;
+resize:none;
+"></textarea>
+
+<br><br>
+
+<button
+onclick="sendNotification()"
+style="
+background:#ff4d6d;
+padding:12px 25px;
+">
+
+📨 Send To All Users
+
+</button>
+
+</div>
+
+<div class="section">
+
+<h2 style="margin-bottom:20px;">
 👥 All Users
 </h2>
 
@@ -293,6 +340,71 @@ No Reports
 
 
 <script>
+
+async function sendNotification(){
+
+const title = document.getElementById("notificationTitle").value.trim();
+
+const message = document.getElementById("notificationMessage").value.trim();
+
+if(title==="" || message===""){
+
+alert("Please enter title and message");
+
+return;
+
+}
+
+try{
+
+const response = await fetch(
+
+API + "/admin/send-notification",
+
+{
+
+method:"POST",
+
+headers:{
+
+"Content-Type":"application/json"
+
+},
+
+body:JSON.stringify({
+
+title:title,
+
+message:message
+
+})
+
+}
+
+);
+
+const result = await response.json();
+
+alert(result.message);
+
+if(result.status){
+
+document.getElementById("notificationTitle").value="";
+
+document.getElementById("notificationMessage").value="";
+
+}
+
+}catch(error){
+
+console.log(error);
+
+alert("Server Error");
+
+}
+
+}
+    
 
 async function loadPremiumUsers(){
 
