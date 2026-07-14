@@ -46,8 +46,10 @@ app.mount(
 # DATABASE
 # =====================================================
 
+DB_PATH = "/var/data/database.db"
+
 conn = sqlite3.connect(
-    "database.db",
+    DB_PATH,
     check_same_thread=False
 )
 
