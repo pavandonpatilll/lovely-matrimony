@@ -1789,33 +1789,37 @@ alert("Unable to load conversations.");
 
 }
 
-
 async function openChat(receiverId,name){
 
 currentReceiver = receiverId;
 
 currentReceiverName = name;
 
+// Chat page open
+showSection("chat");
+
+// Chat list hide
 document.getElementById("conversationList").style.display = "none";
 
+// Chat box show
 document.getElementById("chatBox").style.display = "block";
 
+// Receiver name
 document.getElementById("chatUserName").innerHTML = "💬 " + name;
 
-// Purana timer band karo
+// Purana timer band
 if(chatInterval){
-
-clearInterval(chatInterval);
-
+    clearInterval(chatInterval);
 }
 
-// Pehli baar chat load karo
+// Pehli baar messages load
 loadChat();
 
-// Har 3 second me chat refresh hogi
+// Auto refresh
 chatInterval = setInterval(loadChat,3000);
 
 }
+
 
 function closeChat(){
 
@@ -1900,8 +1904,6 @@ console.log(error);
 }
 
 }
-
-
 
 
 async function loadMatches(){
@@ -2577,10 +2579,8 @@ item.classList.remove("active");
 
 });
 
-if(event){
-
-event.currentTarget.classList.add("active");
-
+if(typeof event !== "undefined" && event){
+    event.currentTarget.classList.add("active");
 }
 
 }
