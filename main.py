@@ -234,6 +234,8 @@ user_id INTEGER NOT NULL,
 
 blocked_user INTEGER NOT NULL,
 
+reason TEXT,
+
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 )
@@ -337,6 +339,11 @@ except:
 
 try:
     cursor.execute("ALTER TABLE premium ADD COLUMN end_date TEXT")
+except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE blocks ADD COLUMN reason TEXT")
 except:
     pass
 
@@ -1903,7 +1910,6 @@ def profile_view(data: InterestModel):
 # =====================================================
 
 @app.post("/block-user")
-
 def block_user(data: InterestModel):
 
     cursor.execute(
@@ -1948,13 +1954,15 @@ def block_user(data: InterestModel):
 
         user_id,
 
-        blocked_user
+        blocked_user,
+
+        reason
 
         )
 
         VALUES(
 
-        ?,?
+        ?,?,?
 
         )
 
@@ -1964,7 +1972,9 @@ def block_user(data: InterestModel):
 
             data.sender_id,
 
-            data.receiver_id
+            data.receiver_id,
+
+            data.reason
 
         )
 
@@ -1976,7 +1986,7 @@ def block_user(data: InterestModel):
 
         "status":True,
 
-        "message":"User Blocked"
+        "message":"User Blocked Successfully"
 
     }
 
@@ -2113,9 +2123,6 @@ def admin_reports():
 
     }
 
-# =====================================================
-# NOTIFICATIONS
-# =====================================================
 
 # =====================================================
 # MY NOTIFICATIONS
@@ -2405,6 +2412,55 @@ def admin_users():
         "total":len(users),
 
         "users":[dict(i) for i in users]
+
+    }
+
+@app.get("/admin/blocked-users")
+def admin_blocked_users():
+
+    cursor.execute("""
+
+    SELECT
+
+    blocks.id,
+    u1.name,
+    u2.name,
+    blocks.reason,
+    blocks.created_at
+
+    FROM blocks
+
+    JOIN users u1
+    ON blocks.user_id = u1.id
+
+    JOIN users u2
+    ON blocks.blocked_user = u2.id
+
+    ORDER BY blocks.id DESC
+
+    """)
+
+    rows = cursor.fetchall()
+
+    blocks = []
+
+    for row in rows:
+
+        blocks.append({
+
+            "id": row[0],
+            "user": row[1],
+            "blocked": row[2],
+            "reason": row[3] if row[3] else "-",
+            "date": row[4]
+
+        })
+
+    return {
+
+        "status": True,
+        "total_blocked": len(blocks),
+        "blocks": blocks
 
     }
 

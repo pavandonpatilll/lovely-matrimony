@@ -210,7 +210,7 @@ onclick="loadUsers()">
 
 <h2 id="totalMatches">0</h2>
 
-<p>Total Matches</p>
+<p>❤️ Total Matches</p>
 
 </div>
 
@@ -218,7 +218,15 @@ onclick="loadUsers()">
 
 <h2 id="totalReports">0</h2>
 
-<p>Reports</p>
+<p>🚩 Reports</p>
+
+</div>
+
+<div class="card" onclick="openBlockedUsers()" style="cursor:pointer;">
+
+<h2 id="totalBlocked">0</h2>
+
+<p>🚫 Blocked Users</p>
 
 </div>
 
@@ -391,6 +399,81 @@ No Reports
 
 
 <script>
+
+async function loadBlockedUsers(){
+
+    try{
+
+        const response = await fetch(API + "/admin/blocked-users");
+
+        const result = await response.json();
+
+        let html = "";
+
+        if(result.blocks.length===0){
+
+            html = `
+            <tr>
+                <td colspan="5" style="text-align:center;">
+                    No Blocked Users 🚫
+                </td>
+            </tr>
+            `;
+
+        }else{
+
+            result.blocks.forEach(user=>{
+
+                html += `
+
+                <tr>
+
+                <td>${user.id}</td>
+
+                <td>${user.user}</td>
+
+                <td>${user.blocked}</td>
+
+                <td>${user.reason}</td>
+
+                <td>${user.date}</td>
+
+                </tr>
+
+                `;
+
+            });
+
+        }
+
+        document.getElementById("blockedTable").innerHTML = html;
+
+        document.getElementById("totalBlocked").innerText = result.total_blocked;
+
+    }catch(error){
+
+        console.log(error);
+
+        alert("Unable to load Blocked Users");
+
+    }
+
+}
+
+function openBlockedUsers(){
+
+    document.getElementById("blockedPopup").style.display="block";
+
+    loadBlockedUsers();
+
+}
+
+function closeBlockedUsers(){
+
+    document.getElementById("blockedPopup").style.display="none";
+
+}
+    
 
 async function loadMatches(){
 
@@ -1243,6 +1326,50 @@ cursor:pointer;
 
 No Matches
 
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+<div id="blockedPopup" class="popup">
+
+<div class="popup-content">
+
+<span class="close" onclick="closeBlockedUsers()">&times;</span>
+
+<h2 style="margin-bottom:20px;">
+🚫 Blocked Users
+</h2>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ID</th>
+<th>User</th>
+<th>Blocked User</th>
+<th>Reason</th>
+<th>Date</th>
+
+</tr>
+
+</thead>
+
+<tbody id="blockedTable">
+
+<tr>
+
+<td colspan="5" style="text-align:center;">
+No Blocked Users
 </td>
 
 </tr>

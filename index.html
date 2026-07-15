@@ -3146,9 +3146,20 @@ alert("Unable to connect to server.");
 
 }
 
-async function blockUser(receiverId){
+async function blockUser(receiverId = currentReceiver){
 
 const userId = localStorage.getItem("userId");
+
+const reason = prompt("Why are you blocking this user?");
+
+if(reason === null){
+return;
+}
+
+if(reason.trim() === ""){
+alert("Please enter a reason.");
+return;
+}
 
 if(!confirm("Block this user?")){
 return;
@@ -3170,7 +3181,9 @@ body:JSON.stringify({
 
 sender_id:parseInt(userId),
 
-receiver_id:receiverId
+receiver_id:receiverId,
+
+reason:reason.trim()
 
 })
 
@@ -3179,6 +3192,11 @@ receiver_id:receiverId
 const result = await response.json();
 
 alert(result.message);
+
+const menu=document.getElementById("chatMenu");
+if(menu){
+menu.style.display="none";
+}
 
 }catch(error){
 
