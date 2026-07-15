@@ -434,6 +434,7 @@ class InterestModel(BaseModel):
 
     sender_id: int
     receiver_id: int
+    reason: str = "Reported"
 
 class InterestActionModel(BaseModel):
 
@@ -1984,7 +1985,6 @@ def block_user(data: InterestModel):
 # =====================================================
 
 @app.post("/report-user")
-
 def report_user(data: InterestModel):
 
     cursor.execute(
@@ -2049,7 +2049,7 @@ def report_user(data: InterestModel):
 
             data.receiver_id,
 
-            "Reported"
+            data.reason
 
         )
 
