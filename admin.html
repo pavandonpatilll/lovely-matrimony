@@ -473,7 +473,7 @@ function closeBlockedUsers(){
     document.getElementById("blockedPopup").style.display="none";
 
 }
-    
+
 
 async function loadMatches(){
 
@@ -1123,10 +1123,13 @@ onclick="deleteUser(${user.id})">
 loadUsers();
 loadReports();
 loadMatches();
+loadBlockedUsers();
+
 setInterval(function(){
 
 loadUsers();
 loadReports();
+loadBlockedUsers();
 
 },30000);
 
@@ -1338,11 +1341,48 @@ No Matches
 
 </div>
 
-<div id="blockedPopup" class="popup">
+<div id="blockedPopup"
+style="
+display:none;
+position:fixed;
+left:0;
+top:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,.6);
+z-index:9999;
+">
 
-<div class="popup-content">
+<div
+style="
+background:white;
+width:95%;
+max-width:900px;
+margin:30px auto;
+padding:20px;
+border-radius:15px;
+max-height:90vh;
+overflow:auto;
+position:relative;
+">
 
-<span class="close" onclick="closeBlockedUsers()">&times;</span>
+<button
+onclick="closeBlockedUsers()"
+style="
+position:absolute;
+right:15px;
+top:15px;
+background:red;
+color:white;
+border:none;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+">
+
+✖
+
+</button>
 
 <h2 style="margin-bottom:20px;">
 🚫 Blocked Users
@@ -1369,7 +1409,9 @@ No Matches
 <tr>
 
 <td colspan="5" style="text-align:center;">
+
 No Blocked Users
+
 </td>
 
 </tr>
@@ -1381,6 +1423,5 @@ No Blocked Users
 </div>
 
 </div>
-
 </body>
 </html>
