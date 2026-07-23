@@ -543,6 +543,269 @@ background:#f7f7f7;
 
 }
 
+/* =========================================
+   PREMMILAN PREMIUM UI
+   LAST CSS
+=========================================*/
+
+:root{
+
+--primary:#ff2d55;
+--secondary:#ff6b8a;
+--bg:#f5f6fb;
+--card:#ffffff;
+--text:#222;
+--radius:22px;
+
+}
+
+html{
+
+scroll-behavior:smooth;
+
+}
+
+body{
+
+background:linear-gradient(135deg,#ff4d6d,#ff85a2,#7b2cbf);
+overflow-x:hidden;
+
+}
+
+.card{
+
+border-radius:26px;
+box-shadow:
+0 20px 45px rgba(0,0,0,.18);
+transition:.30s;
+border:1px solid rgba(255,255,255,.35);
+backdrop-filter:blur(15px);
+
+}
+
+.card:hover{
+
+transform:translateY(-4px);
+
+}
+
+.btn{
+
+border-radius:15px;
+font-weight:bold;
+letter-spacing:.4px;
+box-shadow:0 10px 20px rgba(255,45,85,.25);
+
+}
+
+.btn:active{
+
+transform:scale(.98);
+
+}
+
+.input{
+
+transition:.25s;
+font-size:16px;
+
+}
+
+.input:focus{
+
+box-shadow:0 0 0 4px rgba(255,45,85,.12);
+
+}
+
+.topBar{
+
+position:sticky;
+top:0;
+z-index:999;
+backdrop-filter:blur(18px);
+box-shadow:0 8px 25px rgba(0,0,0,.15);
+
+}
+
+.welcomeCard{
+
+border-radius:25px;
+
+}
+
+.profileStatus{
+
+border-radius:25px;
+
+}
+
+.sideMenu{
+
+border-radius:0 30px 30px 0;
+
+}
+
+.menuItem{
+
+font-weight:600;
+
+}
+
+.menuItem:hover{
+
+transform:translateX(6px);
+
+}
+
+.bottomNav{
+
+height:75px;
+border-top-left-radius:25px;
+border-top-right-radius:25px;
+backdrop-filter:blur(20px);
+
+}
+
+.navItem{
+
+transition:.25s;
+
+}
+
+.navItem.active{
+
+transform:translateY(-4px);
+color:#ff2d55;
+
+}
+
+.navItem span{
+
+transition:.25s;
+
+}
+
+.navItem.active span{
+
+transform:scale(1.15);
+
+}
+
+img{
+
+user-select:none;
+
+}
+
+::-webkit-scrollbar{
+
+width:6px;
+
+}
+
+::-webkit-scrollbar-thumb{
+
+background:#ff4d6d;
+border-radius:20px;
+
+}
+
+::-webkit-scrollbar-track{
+
+background:transparent;
+
+}
+
+/* ===========================
+ANDROID APP FEEL
+===========================*/
+
+@media(max-width:768px){
+
+body{
+
+padding:0;
+
+background:#f5f6fb;
+
+}
+
+.card{
+
+max-width:100%;
+min-height:100vh;
+border-radius:0;
+padding:16px;
+box-shadow:none;
+
+}
+
+.topBar{
+
+margin:0;
+border-radius:0;
+
+}
+
+.bottomNav{
+
+left:10px;
+right:10px;
+bottom:10px;
+width:auto;
+border-radius:22px;
+
+}
+
+.welcomeCard,
+.profileStatus{
+
+border-radius:20px;
+
+}
+
+.btn{
+
+height:52px;
+
+}
+
+.input{
+
+height:50px;
+
+}
+
+}
+
+/* ===========================
+DESKTOP PREMIUM
+===========================*/
+
+@media(min-width:900px){
+
+.card{
+
+max-width:560px;
+
+}
+
+.homeContent{
+
+padding:35px;
+
+}
+
+.welcomeCard:hover,
+.profileStatus:hover{
+
+transform:translateY(-4px);
+transition:.25s;
+
+}
+
+}
+
 </style>
 
 </head>
@@ -553,7 +816,7 @@ background:#f7f7f7;
 
 <div class="logo">❤️</div>
 
-<div class="title">JeevanSaathi</div>
+<div class="title"> Prem Milan</div>
 
 <div class="sub">Find Your Perfect Life Partner</div>
 
@@ -737,9 +1000,8 @@ Don't have an account?
 
 <div class="menuBtn" onclick="openMenu()">☰</div>
 
-<div class="appTitle">❤️ शुभमिलन (ShubhMilan) 
+<div class="appTitle">❤️ Prem Milan App प्रेम, विश्वास आणि आयुष्यभराची साथ.</div>
 
-प्रेम, विश्वास आणि आयुष्यभराची साथ.</div>
 
 <div class="notify"
 onclick="showSection('notification');loadNotifications();">

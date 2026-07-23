@@ -582,7 +582,7 @@ def home():
 
     return {
         "status": True,
-        "message": "JeevanSaathi Backend Running ❤️"
+        "message": " Prem Milan Backend Running ❤️"
     }
 
 # =====================================================
