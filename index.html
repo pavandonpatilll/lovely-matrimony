@@ -600,9 +600,30 @@ background:#f7f7f7;
 
 </style>
 
+
+<style>
+html,body{width:100%;min-height:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;}
+body{padding-bottom:env(safe-area-inset-bottom);}
+.card{width:min(96vw,560px);max-height:none;box-sizing:border-box;}
+.homeContent{width:min(100%,900px);margin:0 auto;padding:12px 12px calc(86px + env(safe-area-inset-bottom));box-sizing:border-box;}
+.topBar{position:sticky;top:0;z-index:1200;padding-top:max(10px,env(safe-area-inset-top));}
+#chatMessages{height:clamp(280px,52dvh,560px)!important;overscroll-behavior:contain;}
+.pmPhotoGrid{grid-template-columns:repeat(4,minmax(0,1fr));}
+img{max-width:100%;}
+button,input,select,textarea{font:inherit;max-width:100%;}
+.bottomNav{padding-bottom:max(8px,env(safe-area-inset-bottom));}
+@media(max-width:700px){.homeContent{padding-left:9px;padding-right:9px}.welcomeCard{width:100%;}.pmPhotoGrid{grid-template-columns:repeat(2,minmax(0,1fr));}.pmModal{padding:8px}.pmModalCard{margin:8px auto;border-radius:20px}.pmHero img{height:min(72dvh,480px)}#chatBox{width:100%;}.chatMenuItem{padding:14px 16px;}}
+@media(min-width:1000px){.homeContent{padding-left:20px;padding-right:20px}.bottomNav{max-width:900px;margin:auto;left:0;right:0;border-radius:20px 20px 0 0;}}
+@media(orientation:landscape) and (max-height:600px){#chatMessages{height:55dvh!important}.homeContent{padding-bottom:75px}.pmHero img{height:70vh}}
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 
 <body>
+<script>window.PM_API="https://lovely-matrimony-q4vn.onrender.com";</script>
 
 <div class="card">
 
@@ -1153,12 +1174,16 @@ margin:15px 0;
 
 </div>
 
-<div style="display:flex;gap:10px;">
+<div style="display:flex;gap:8px;align-items:center;">
+
+<label style="width:48px;height:48px;min-width:48px;border-radius:14px;background:#ffe7ee;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:23px;">📷
+<input id="chatPhotoInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none" onchange="sendChatPhoto(this)">
+</label>
 
 <input
 id="chatInput"
 class="input"
-style="margin:0;"
+style="margin:0;flex:1;min-width:0;"
 placeholder="Type message...">
 
 <button
@@ -2035,72 +2060,55 @@ chatInterval = null;
 }
 
 async function loadChat(){
-
-const senderId=localStorage.getItem("userId");
-
+const senderId=parseInt(localStorage.getItem("userId")||"0");
+if(!senderId||!currentReceiver)return;
 try{
-
-const response=await fetch(
-
-"https://lovely-matrimony-q4vn.onrender.com/chat/"+senderId+"/"+currentReceiver
-
-);
-
+const response=await fetch(PM_API+"/chat/"+senderId+"/"+currentReceiver,{cache:"no-store"});
 const result=await response.json();
-
-if(!result.status){
-
-return;
-
-}
-
+if(!result.status)return;
 let html="";
-
-result.messages.forEach(msg=>{
-
-const mine = msg.sender_id == parseInt(senderId);
-
-html+=`
-
-<div
-style="
-display:flex;
-justify-content:${mine?"flex-end":"flex-start"};
-margin:10px 0;
-">
-
-<div
-style="
-max-width:70%;
-padding:10px 15px;
-border-radius:15px;
-background:${mine?"#ff4d6d":"#eeeeee"};
-color:${mine?"white":"black"};
-">
-
-${msg.message}
-
-</div>
-
-</div>
-
-`;
-
+(result.messages||[]).forEach(msg=>{
+const mine=Number(msg.sender_id)===senderId;
+const media=msg.media_url?pmUrl(msg.media_url):"";
+html+=`<div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:9px 0;">
+<div style="max-width:min(78%,360px);position:relative;padding:9px 11px;border-radius:17px;background:${mine?'#ff4d6d':'#eeeeee'};color:${mine?'white':'black'};overflow:hidden;">
+${media?`<img src="${media}" loading="lazy" alt="Photo" onclick="window.open('${media}','_blank')" style="display:block;width:min(250px,100%);max-height:300px;object-fit:cover;border-radius:12px;cursor:pointer;">`:''}
+${msg.message&&msg.message!=="[Photo]"?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;">${escapeHtml(msg.message)}</div>`:''}
+${mine?`<button onclick="deleteChatMessage(${msg.id})" title="Delete" style="position:absolute;right:5px;top:5px;border:0;background:rgba(255,255,255,.9);border-radius:50%;width:28px;height:28px;cursor:pointer;">🗑</button>`:''}
+</div></div>`;
 });
-
-document.getElementById("chatMessages").innerHTML=html;
-
-document.getElementById("chatMessages").scrollTop=
-
-document.getElementById("chatMessages").scrollHeight;
-
-}catch(error){
-
-console.log(error);
-
+document.getElementById("chatMessages").innerHTML=html||'<div style="text-align:center;color:#888;padding:30px">No messages yet ❤️</div>';
+const box=document.getElementById("chatMessages");box.scrollTop=box.scrollHeight;
+}catch(error){console.log("chat load",error);}
 }
 
+function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+async function sendChatPhoto(input){
+const file=input.files&&input.files[0];
+if(!file)return;
+if(file.size>8*1024*1024){alert("Photo must be below 8 MB.");input.value="";return;}
+const uid=parseInt(localStorage.getItem("userId")||"0");
+if(!uid||!currentReceiver){alert("Please open a chat first.");input.value="";return;}
+try{
+const fd=new FormData();fd.append("photo",file);
+const r=await fetch(PM_API+"/upload-chat-photo/"+uid+"/"+currentReceiver,{method:"POST",body:fd});
+const d=await r.json();
+if(!d.status)alert(d.message||"Unable to send photo.");else loadChat();
+}catch(e){console.log(e);alert("Unable to send photo.");}
+input.value="";
 }
+
+async function deleteChatMessage(id){
+if(!confirm("Delete this message/photo?"))return;
+const uid=parseInt(localStorage.getItem("userId")||"0");
+try{
+const r=await fetch(PM_API+"/delete-message/"+id+"?user_id="+uid,{method:"DELETE"});
+const d=await r.json();
+if(!d.status)alert(d.message||"Unable to delete.");else loadChat();
+}catch(e){console.log(e);alert("Unable to delete message.");}
+}
+
 
 
 async function loadMatches(){
@@ -3516,7 +3524,7 @@ autoLogin();
 
 
 <script>
-const PM_API="https://lovely-matrimony-q4vn.onrender.com";
+const PM_API=window.PM_API||"https://lovely-matrimony-q4vn.onrender.com";
 function pmUrl(p){return p?(p.startsWith("http")?p:PM_API+p):""}
 async function pmLoadGallery(){const uid=localStorage.getItem("userId"),box=document.getElementById("pmPhotoGrid");if(!uid||!box)return;box.innerHTML="<div style='grid-column:1/-1;text-align:center;padding:20px'>Loading photos…</div>";try{const d=await (await fetch(PM_API+"/profile-full/"+uid)).json();if(!d.status)return box.innerHTML="Unable to load photos";box.innerHTML=(d.photos||[]).map(p=>`<div class="pmPhotoItem"><img src="${pmUrl(p.photo)}">${p.is_main?'<span class="pmPhotoBadge">MAIN</span>':''}<div class="pmPhotoActions">${!p.is_main&&p.id?`<button onclick="pmSetMain(${p.id})">⭐</button>`:''}${p.id?`<button onclick="pmDeletePhoto(${p.id})">🗑</button>`:''}</div></div>`).join("")||"<div style='grid-column:1/-1;text-align:center;padding:20px'>No photos yet</div>"}catch(e){box.innerHTML="Server connection failed"}}
 async function pmUploadPhotos(input){const files=Array.from(input.files||[]);if(!files.length)return;const uid=localStorage.getItem("userId");if(!uid)return alert("Please login first.");const fd=new FormData();files.slice(0,4).forEach(f=>fd.append("photos",f));try{const d=await (await fetch(PM_API+"/upload-profile-photos/"+uid,{method:"POST",body:fd})).json();alert(d.message||"Photos uploaded");input.value="";pmLoadGallery();if(typeof loadProfile==="function")loadProfile()}catch(e){alert("Unable to upload photos.")}}
@@ -3533,6 +3541,55 @@ const _pmLoadEdit=window.loadEditProfile;window.loadEditProfile=async function()
 window.interestAction=async function(interestId,status){try{const uid=localStorage.getItem('userId'),d=await (await fetch(PM_API+'/received-interests/'+uid)).json(),item=(d.interests||[]).find(x=>x.interest_id==interestId);if(!item)return;const r=await (await fetch(PM_API+'/respond-interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:+uid,other_id:item.sender_id,status})})).json();alert(r.message);if(typeof loadReceivedInterests==='function')loadReceivedInterests()}catch(e){alert('Unable to connect to server.')}};
 </script>
 
+
+<script>
+/* ================= PREM MILAN FIREBASE SAFE BRIDGE ================= */
+(function(){
+const cfg={apiKey:"AIzaSyAQhLVswUkY9LOKyXZUdAcizEjN6Htm1vk",authDomain:"prem-milan-45f6f.firebaseapp.com",projectId:"prem-milan-45f6f",storageBucket:"prem-milan-45f6f.firebasestorage.app",messagingSenderId:"383336320685",appId:"1:383336320685:web:b590dc055a26fa56c3c024",measurementId:"G-CQ5HQDDSNV"};
+try{
+if(window.firebase){
+const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);
+window.pmFirebase={app,auth:firebase.auth(),db:firebase.firestore()};
+window.pmFirebaseReady=true;
+}
+}catch(e){console.warn("Firebase init skipped:",e);window.pmFirebaseReady=false;}
+window.pmFirebaseUserId=function(u){return u&&u.id?String(u.id):""};
+window.pmSyncUser=async function(u){
+if(!window.pmFirebaseReady||!u||!u.id)return false;
+try{await pmFirebase.db.collection("users").doc(String(u.id)).set({...u,lastSeen:new Date().toISOString()},{merge:true});return true}catch(e){console.warn("Firestore sync skipped:",e);return false;}
+};
+window.pmFirebaseSignIn=async function(u,password){
+if(!window.pmFirebaseReady||!u||!u.mobile||!password)return;
+try{
+const email=String(u.mobile).replace(/\D/g,"")+"@premmilan.app";
+await pmFirebase.auth().signInWithEmailAndPassword(email,password);
+}catch(e){console.warn("Firebase sign-in skipped:",e);}
+};
+window.pmFirebaseCreateUser=async function(u,password){
+if(!window.pmFirebaseReady||!u||!u.mobile||!password)return;
+try{
+const email=String(u.mobile).replace(/\D/g,"")+"@premmilan.app";
+await pmFirebase.auth().createUserWithEmailAndPassword(email,password);
+}catch(e){console.warn("Firebase account sync skipped:",e);}
+};
+})();
+
+(function(){
+let ready=false;
+try{ready=!!history.state?.premMilan;}catch(e){}
+if(!ready){history.replaceState({premMilan:true,screen:"home"},"");}
+window.addEventListener("popstate",function(){
+const menu=document.getElementById("sideMenu");
+if(menu&&menu.classList.contains("open")){if(typeof closeMenu==='function')closeMenu();history.pushState({premMilan:true},"");return;}
+const chat=document.getElementById("chatBox");
+if(chat&&chat.style.display!=="none"){if(typeof closeChat==='function')closeChat();history.pushState({premMilan:true},"");return;}
+const modal=document.getElementById("pmProfileModal");
+if(modal&&!modal.classList.contains("hidden")){if(typeof pmCloseProfile==='function')pmCloseProfile();history.pushState({premMilan:true},"");return;}
+if(typeof showSection==='function'){showSection("homeSection");}
+history.pushState({premMilan:true,screen:"home"},"");
+});
+})();
+</script>
 </body>
 
 </html>

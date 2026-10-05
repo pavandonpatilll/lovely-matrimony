@@ -38,8 +38,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 PROFILE_UPLOADS_DIR = os.path.join(UPLOADS_DIR, "profile")
+CHAT_UPLOADS_DIR = os.path.join(UPLOADS_DIR, "chat")
 
 os.makedirs(PROFILE_UPLOADS_DIR, exist_ok=True)
+os.makedirs(CHAT_UPLOADS_DIR, exist_ok=True)
 
 app.mount(
     "/uploads",
@@ -164,6 +166,18 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 """)
 
 conn.commit()
+
+# Safe chat-media migration for existing databases
+try:
+    cursor.execute("PRAGMA table_info(messages)")
+    _message_cols = {row[1] for row in cursor.fetchall()}
+    if "media_url" not in _message_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN media_url TEXT")
+    if "media_type" not in _message_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN media_type TEXT DEFAULT 'text'")
+    conn.commit()
+except Exception as _e:
+    print("Chat media migration warning:", _e)
 
 # =====================================================
 # NOTIFICATIONS TABLE
@@ -1470,6 +1484,68 @@ def send_message(data: MessageModel):
 
     }
 
+
+# =====================================================
+# CHAT PHOTO UPLOAD / DELETE
+# =====================================================
+
+@app.post("/upload-chat-photo/{sender_id}/{receiver_id}")
+def upload_chat_photo(sender_id:int, receiver_id:int, photo:UploadFile=File(...)):
+
+    if sender_id == receiver_id:
+        return {"status":False,"message":"Invalid User"}
+
+    allowed={".jpg",".jpeg",".png",".webp",".gif"}
+    ext=os.path.splitext(photo.filename or "")[1].lower()
+    if ext not in allowed:
+        return {"status":False,"message":"Only JPG, PNG, WEBP or GIF images are allowed."}
+
+    filename=f"{uuid.uuid4().hex}{ext}"
+    path=os.path.join(CHAT_UPLOADS_DIR,filename)
+    try:
+        with open(path,"wb") as f:
+            f.write(photo.file.read())
+
+        url=f"/uploads/chat/{filename}"
+        cursor.execute("""
+            INSERT INTO messages(sender_id,receiver_id,message,media_url,media_type)
+            VALUES(?,?,?,?,?)
+        """,(sender_id,receiver_id,"[Photo]",url,"image"))
+        conn.commit()
+        create_notification(receiver_id,"New Photo 💬","You received a new photo.")
+        return {"status":True,"message":"Photo Sent","media_url":url}
+    except Exception as e:
+        try:
+            if os.path.exists(path): os.remove(path)
+        except Exception:
+            pass
+        return {"status":False,"message":"Unable to upload photo."}
+    finally:
+        try: photo.file.close()
+        except Exception: pass
+
+@app.delete("/delete-message/{message_id}")
+def delete_message(message_id:int, user_id:int):
+    cursor.execute("SELECT * FROM messages WHERE id=?",(message_id,))
+    row=cursor.fetchone()
+    if row is None:
+        return {"status":False,"message":"Message not found"}
+    if int(row["sender_id"]) != int(user_id):
+        return {"status":False,"message":"You can delete only your own message."}
+
+    media=row["media_url"] if "media_url" in row.keys() else None
+    cursor.execute("DELETE FROM messages WHERE id=?",(message_id,))
+    conn.commit()
+
+    if media:
+        try:
+            filename=os.path.basename(media)
+            path=os.path.join(CHAT_UPLOADS_DIR,filename)
+            if os.path.isfile(path): os.remove(path)
+        except Exception:
+            pass
+
+    return {"status":True,"message":"Message deleted"}
 
 # =====================================================
 # CHAT HISTORY

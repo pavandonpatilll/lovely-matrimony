@@ -134,7 +134,9 @@ background:#dc3545;
 
 </style>
 
-</head>
+<style id="PREM ADMIN RESPONSIVE">
+*{box-sizing:border-box}html,body{max-width:100%;overflow-x:hidden}table{width:100%;display:block;overflow-x:auto;white-space:nowrap}input,select,button,textarea{max-width:100%;font:inherit}@media(max-width:700px){body{padding:10px!important}.card,.container,.adminContainer{width:100%!important;max-width:100%!important}.stats,.cards,.grid{grid-template-columns:1fr!important}.modal>div{width:96%!important;margin:15px auto!important;padding:14px!important}table{font-size:12px}.btn,button{min-height:42px}}
+</style><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script></head>
 
 <body>
 
@@ -1423,5 +1425,8 @@ No Blocked Users
 </div>
 
 </div>
+<script id="premFirebaseAdminBridge">
+(function(){const cfg={apiKey:"AIzaSyAQhLVswUkY9LOKyXZUdAcizEjN6Htm1vk",authDomain:"prem-milan-45f6f.firebaseapp.com",projectId:"prem-milan-45f6f",storageBucket:"prem-milan-45f6f.firebasestorage.app",messagingSenderId:"383336320685",appId:"1:383336320685:web:b590dc055a26fa56c3c024",measurementId:"G-CQ5HQDDSNV"};try{if(window.firebase){const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);window.pmAdminFirebase={app,auth:firebase.auth(),db:firebase.firestore(),ready:true};}}catch(e){console.warn("Firebase admin bridge skipped",e);window.pmAdminFirebase={ready:false};}})();
+</script>
 </body>
 </html>
