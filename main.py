@@ -34,11 +34,16 @@ app.add_middleware(
 # FOLDERS
 # =====================================================
 
-os.makedirs("uploads/profile", exist_ok=True)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+PROFILE_UPLOADS_DIR = os.path.join(UPLOADS_DIR, "profile")
+
+os.makedirs(PROFILE_UPLOADS_DIR, exist_ok=True)
 
 app.mount(
     "/uploads",
-    StaticFiles(directory="uploads"),
+    StaticFiles(directory=UPLOADS_DIR),
     name="uploads"
 )
 
@@ -46,7 +51,10 @@ app.mount(
 # DATABASE
 # =====================================================
 
-DB_PATH = "/var/data/database.db"
+# Render Free does not provide /var/data unless a persistent disk is attached.
+# Keep SQLite beside this main.py so the service can start on the Free instance.
+# NOTE: Render's ephemeral filesystem can reset this database on redeploy/restart.
+DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 conn = sqlite3.connect(
     DB_PATH,
@@ -840,7 +848,7 @@ def upload_profile_photo(
 
     filename = str(uuid.uuid4()) + "." + extension
 
-    filepath = os.path.join("uploads", "profile", filename)
+    filepath = os.path.join(PROFILE_UPLOADS_DIR, filename)
 
     # Save new photo
 
