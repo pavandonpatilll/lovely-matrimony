@@ -155,6 +155,10 @@ Last Update : --
 
 </p>
 
+<div style="text-align:center;margin:12px 0;">
+<button onclick="firebaseSyncNow()" style="background:#6f42c1;padding:10px 18px;border-radius:10px;">🔥 Sync All Data to Firebase</button>
+<span id="firebaseStatus" style="margin-left:10px;font-weight:bold;">Firebase: checking…</span>
+</div>
 <div class="container">
 
 <div style="margin-bottom:20px;">
@@ -1136,10 +1140,35 @@ loadBlockedUsers();
 },30000);
 
 
+
+async function firebaseSyncNow(){
+    const el=document.getElementById("firebaseStatus");
+    try{
+        const r=await fetch(API+"/admin/firebase-sync",{method:"POST"});
+        const d=await r.json();
+        el.textContent=d.status?"Firebase: synced ✅":"Firebase: "+(d.message||"not configured");
+        el.style.color=d.status?"green":"#c00";
+        alert(d.message||"Firebase sync complete");
+    }catch(e){
+        el.textContent="Firebase: connection error";
+        el.style.color="#c00";
+        alert("Firebase sync failed");
+    }
+}
+async function checkFirebaseStatus(){
+    try{
+        const r=await fetch(API+"/firebase-status");
+        const d=await r.json();
+        const el=document.getElementById("firebaseStatus");
+        el.textContent=d.firebase_enabled?"Firebase: connected ✅":"Firebase: not configured ❌";
+        el.style.color=d.firebase_enabled?"green":"#c00";
+    }catch(e){}
+}
+checkFirebaseStatus();
 </script>
 
 
-<div id="viewPopup"
+<div id="viewPopup
 style="
 display:none;
 position:fixed;

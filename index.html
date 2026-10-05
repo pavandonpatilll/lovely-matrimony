@@ -1537,7 +1537,11 @@ alert("Unable to connect to server.");
 
 }
 
-function logout(){
+async function logout(){
+
+if(window.pmFirebaseLogout){
+    await window.pmFirebaseLogout();
+}
 
 localStorage.clear();
 
@@ -3134,6 +3138,10 @@ password:pass
 const loginResult = await loginResponse.json();
 
 if(loginResult.status){
+
+if(window.pmFirebaseLogin){
+    await window.pmFirebaseLogin(mobile,pass);
+}
 
 const userId = loginResult.user.id;
 

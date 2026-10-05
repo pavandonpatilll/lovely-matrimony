@@ -8,6 +8,10 @@ import hashlib
 import shutil
 import uuid
 import os
+import json
+import threading
+import firebase_admin
+from firebase_admin import credentials, firestore, auth as firebase_auth
 
 # =====================================================
 # APP
@@ -31,10 +35,191 @@ app.add_middleware(
 )
 
 # =====================================================
+# FIREBASE AUTO MIRROR FOR ALL WRITE ACTIONS
+# =====================================================
+@app.middleware("http")
+async def firebase_mirror_middleware(request, call_next):
+    response = await call_next(request)
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        firebase_sync_async()
+    return response
+
+
+# =====================================================
 # FOLDERS
 # =====================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# =====================================================
+# REAL FIREBASE (SECURE BACKEND CONNECTION)
+# =====================================================
+# Put the Firebase service-account JSON in Render as:
+# FIREBASE_SERVICE_ACCOUNT_JSON
+# The private service-account key is NEVER sent to the browser.
+FIREBASE_ENABLED = False
+firebase_db = None
+
+def init_firebase():
+    global FIREBASE_ENABLED, firebase_db
+    try:
+        raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        if not raw:
+            return False
+
+        info = json.loads(raw)
+
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(
+                credentials.Certificate(info)
+            )
+
+        firebase_db = firestore.client()
+        FIREBASE_ENABLED = True
+        return True
+    except Exception as e:
+        print("Firebase init warning:", e)
+        FIREBASE_ENABLED = False
+        firebase_db = None
+        return False
+
+init_firebase()
+
+def firebase_email_for_mobile(mobile):
+    digits = "".join(ch for ch in str(mobile) if ch.isdigit())
+    return f"{digits}@premmilan.app"
+
+def ensure_firebase_user(mobile, password, name="Prem Milan User"):
+    """Create/update the hidden Firebase Auth identity for mobile/password login."""
+    if not FIREBASE_ENABLED:
+        return None
+
+    email = firebase_email_for_mobile(mobile)
+    try:
+        u = firebase_auth.get_user_by_email(email)
+        firebase_auth.update_user(
+            u.uid,
+            password=password,
+            display_name=name or "Prem Milan User"
+        )
+        return u
+    except firebase_auth.UserNotFoundError:
+        return firebase_auth.create_user(
+            email=email,
+            password=password,
+            display_name=name or "Prem Milan User"
+        )
+    except Exception as e:
+        print("Firebase Auth sync warning:", e)
+        return None
+
+def firebase_sync_all():
+    """Mirror every SQLite table into private Firestore collections."""
+    if not FIREBASE_ENABLED:
+        return
+
+    try:
+        db = sqlite3.connect(DB_PATH)
+        db.row_factory = sqlite3.Row
+        c = db.cursor()
+
+        c.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY CASE name
+                WHEN 'users' THEN 1
+                WHEN 'admin' THEN 2
+                ELSE 3
+            END, name
+        """)
+        tables = [r[0] for r in c.fetchall()]
+
+        for table in tables:
+            c.execute(f"PRAGMA table_info({table})")
+            cols = [r[1] for r in c.fetchall()]
+            c.execute(f"SELECT * FROM {table}")
+            rows = c.fetchall()
+            collection = db_firestore_collection = firebase_db.collection(
+                f"premmilan_{table}"
+            )
+
+            existing = set()
+            for row in rows:
+                data = dict(row)
+                doc_id = str(data.get("id", uuid.uuid4()))
+                # Firestore gets the hash, not the plaintext password.
+                collection.document(doc_id).set(data, merge=True)
+                existing.add(doc_id)
+
+            # Remove stale mirror documents.
+            for doc in collection.stream():
+                if doc.id not in existing:
+                    collection.document(doc.id).delete()
+
+        db.close()
+        print("Firebase mirror sync: OK")
+    except Exception as e:
+        print("Firebase mirror sync warning:", e)
+
+def firebase_sync_async():
+    if FIREBASE_ENABLED:
+        threading.Thread(
+            target=firebase_sync_all,
+            daemon=True
+        ).start()
+
+def firebase_restore_if_empty():
+    """Restore local SQLite from Firestore after a Render restart/redeploy."""
+    if not FIREBASE_ENABLED:
+        return
+
+    try:
+        db = sqlite3.connect(DB_PATH)
+        db.row_factory = sqlite3.Row
+        c = db.cursor()
+
+        c.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'
+            ORDER BY CASE name
+                WHEN 'users' THEN 1
+                WHEN 'admin' THEN 2
+                ELSE 3
+            END, name
+        """)
+        tables = [r[0] for r in c.fetchall()]
+        restored_any = False
+
+        for table in tables:
+            c.execute(f"SELECT COUNT(*) FROM {table}")
+            if c.fetchone()[0] > 0:
+                continue
+
+            docs = list(firebase_db.collection(f"premmilan_{table}").stream())
+            if not docs:
+                continue
+
+            c.execute(f"PRAGMA table_info({table})")
+            cols = [r[1] for r in c.fetchall()]
+            placeholders = ",".join("?" for _ in cols)
+            col_sql = ",".join(cols)
+
+            for doc in docs:
+                data = doc.to_dict() or {}
+                values = [data.get(col) for col in cols]
+                c.execute(
+                    f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})",
+                    values
+                )
+                restored_any = True
+
+        if restored_any:
+            db.commit()
+            print("Firebase -> SQLite restore: OK")
+        db.close()
+    except Exception as e:
+        print("Firebase restore warning:", e)
+
 
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 PROFILE_UPLOADS_DIR = os.path.join(UPLOADS_DIR, "profile")
@@ -595,6 +780,9 @@ if admin is None:
 
     conn.commit()
 
+# Restore cloud data if this Render instance starts with an empty SQLite DB.
+firebase_restore_if_empty()
+
 # =====================================================
 # HOME
 # =====================================================
@@ -697,10 +885,18 @@ def register(user: RegisterModel):
 
     conn.commit()
 
+    firebase_user = ensure_firebase_user(
+        user.mobile,
+        user.password,
+        user.name
+    )
+    firebase_sync_async()
+
     return {
 
         "status": True,
-        "message": "Registration Successful"
+        "message": "Registration Successful",
+        "firebase_enabled": bool(firebase_user)
 
     }
 
@@ -732,10 +928,19 @@ def login(user: LoginModel):
             "message": "Wrong Password"
         }
 
+    firebase_user = ensure_firebase_user(
+        data["mobile"],
+        user.password,
+        data["name"]
+    )
+    firebase_sync_async()
+
     return {
 
         "status": True,
         "message": "Login Successful",
+        "firebase_enabled": bool(firebase_user),
+        "firebase_email": firebase_email_for_mobile(data["mobile"]) if FIREBASE_ENABLED else "",
 
         "user": {
 
@@ -2412,11 +2617,21 @@ def admin_login(data:AdminLoginModel):
 
         }
 
+    firebase_admin_user = ensure_firebase_user(
+        "admin",
+        data.password,
+        "Prem Milan Admin"
+    )
+
+    firebase_sync_async()
+
     return{
 
         "status":True,
 
-        "message":"Admin Login Successful"
+        "message":"Admin Login Successful",
+        "firebase_enabled": bool(firebase_admin_user),
+        "firebase_email": firebase_email_for_mobile("admin") if FIREBASE_ENABLED else ""
 
     }
 
@@ -2899,3 +3114,29 @@ def my_matches(user_id:int):
 
     }
 
+
+
+# =====================================================
+# FIREBASE STATUS / MANUAL FULL SYNC
+# =====================================================
+@app.get("/firebase-status")
+def firebase_status():
+    return {
+        "status": True,
+        "firebase_enabled": FIREBASE_ENABLED,
+        "firestore": bool(firebase_db),
+        "message": "Real Firebase connected" if FIREBASE_ENABLED else "Firebase service account is not configured"
+    }
+
+@app.post("/admin/firebase-sync")
+def admin_firebase_sync():
+    if not FIREBASE_ENABLED:
+        return {
+            "status": False,
+            "message": "Firebase service account is not configured on Render"
+        }
+    firebase_sync_all()
+    return {
+        "status": True,
+        "message": "All Prem Milan data synced to Firebase successfully ❤️"
+    }
