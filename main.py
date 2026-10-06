@@ -37,6 +37,8 @@ app.add_middleware(
 # =====================================================
 # FIREBASE AUTO MIRROR FOR ALL WRITE ACTIONS
 # =====================================================
+# Firebase sync is intentionally debounced. A full-table mirror after every
+# write can make a busy app slow and create many concurrent Firestore jobs.
 @app.middleware("http")
 async def firebase_mirror_middleware(request, call_next):
     response = await call_next(request)
@@ -161,12 +163,39 @@ def firebase_sync_all():
     except Exception as e:
         print("Firebase mirror sync warning:", e)
 
+_firebase_sync_lock = threading.Lock()
+_firebase_sync_pending = False
+
 def firebase_sync_async():
-    if FIREBASE_ENABLED:
-        threading.Thread(
-            target=firebase_sync_all,
-            daemon=True
-        ).start()
+    global _firebase_sync_pending
+    if not FIREBASE_ENABLED:
+        return
+    with _firebase_sync_lock:
+        if _firebase_sync_pending:
+            return
+        _firebase_sync_pending = True
+
+    def worker():
+        global _firebase_sync_pending
+        try:
+            # Coalesce a burst of writes (login/register/chat/admin actions).
+            import time
+            time.sleep(2.0)
+            firebase_sync_all()
+        finally:
+            with _firebase_sync_lock:
+                _firebase_sync_pending = False
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+@app.middleware("http")
+async def media_cache_middleware(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/uploads/"):
+        response.headers["Cache-Control"] = "public, max-age=604800, stale-while-revalidate=86400"
+    return response
+
 
 def firebase_restore_if_empty():
     """Restore local SQLite from Firestore after a Render restart/redeploy."""
@@ -304,6 +333,55 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
 
+conn.commit()
+
+# =====================================================
+# PROFILE PHOTOS TABLE
+# =====================================================
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS profile_photos(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    photo TEXT NOT NULL,
+    is_main INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+conn.commit()
+
+# Backfill each existing main profile photo into the gallery table once.
+try:
+    cursor.execute("""
+        SELECT id, photo FROM users
+        WHERE photo IS NOT NULL AND TRIM(photo) != ''
+    """)
+    for _u in cursor.fetchall():
+        cursor.execute("SELECT id FROM profile_photos WHERE user_id=?", (_u[0],))
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "INSERT INTO profile_photos(user_id,photo,is_main) VALUES(?,?,1)",
+                (_u[0], _u[1])
+            )
+    conn.commit()
+except Exception as _e:
+    print("Profile photo backfill warning:", _e)
+
+# Useful indexes for fast search, chat and profile lookups.
+for _sql in [
+    "CREATE INDEX IF NOT EXISTS idx_users_gender_age ON users(gender,age)",
+    "CREATE INDEX IF NOT EXISTS idx_users_city ON users(city)",
+    "CREATE INDEX IF NOT EXISTS idx_users_religion ON users(religion)",
+    "CREATE INDEX IF NOT EXISTS idx_users_caste ON users(caste)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id,receiver_id)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_receiver_sender ON messages(receiver_id,sender_id)",
+    "CREATE INDEX IF NOT EXISTS idx_profile_views_pair ON profile_views(viewer_id,profile_id)",
+    "CREATE INDEX IF NOT EXISTS idx_profile_photos_user ON profile_photos(user_id,is_main)",
+]:
+    try:
+        cursor.execute(_sql)
+    except Exception:
+        pass
 conn.commit()
 
 # =====================================================
@@ -554,6 +632,24 @@ try:
 except:
     pass
 
+conn.commit()
+
+# Create indexes again after every table exists.
+for _sql in [
+    "CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id,receiver_id)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_receiver_sender ON messages(receiver_id,sender_id)",
+    "CREATE INDEX IF NOT EXISTS idx_profile_views_pair ON profile_views(viewer_id,profile_id)",
+    "CREATE INDEX IF NOT EXISTS idx_interests_receiver_status ON interests(receiver_id,status)",
+    "CREATE INDEX IF NOT EXISTS idx_interests_sender_status ON interests(sender_id,status)",
+    "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id,created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_blocks_user_blocked ON blocks(user_id,blocked_user)",
+    "CREATE INDEX IF NOT EXISTS idx_profile_photos_user ON profile_photos(user_id,is_main)",
+]:
+    try:
+        cursor.execute(_sql)
+    except Exception:
+        pass
 conn.commit()
 
 # =====================================================
@@ -1000,118 +1096,201 @@ def get_profile(user_id:int):
 
         }
 
+    profile=dict(user)
+    profile.pop("password", None)
     return{
 
         "status":True,
 
-        "profile":dict(user)
+        "profile":profile
 
     }
+
+# =====================================================
+# FULL PUBLIC PROFILE + GALLERY
+# =====================================================
+
+@app.get("/profile-full/{user_id}")
+def profile_full(user_id:int):
+    cursor.execute("SELECT * FROM users WHERE id=?", (user_id,))
+    user = cursor.fetchone()
+    if user is None:
+        return {"status":False,"message":"Profile not found"}
+
+    cursor.execute("""
+        SELECT id, photo, is_main, created_at
+        FROM profile_photos
+        WHERE user_id=?
+        ORDER BY is_main DESC, id ASC
+        LIMIT 4
+    """, (user_id,))
+    photos = [dict(r) for r in cursor.fetchall()]
+
+    # Legacy safety: expose users.photo even if gallery backfill has not run.
+    if not photos and user["photo"]:
+        photos = [{"id":0,"photo":user["photo"],"is_main":1}]
+
+    profile=dict(user)
+    profile.pop("password", None)
+    return {
+        "status":True,
+        "profile":profile,
+        "photos":photos
+    }
+
+
+@app.post("/upload-profile-photos/{user_id}")
+def upload_profile_photos(user_id:int, photos:list[UploadFile]=File(...)):
+    cursor.execute("SELECT id,photo FROM users WHERE id=?", (user_id,))
+    user = cursor.fetchone()
+    if user is None:
+        return {"status":False,"message":"User not found"}
+
+    allowed={".jpg",".jpeg",".png",".webp",".gif"}
+    cursor.execute("SELECT COUNT(*) FROM profile_photos WHERE user_id=?", (user_id,))
+    current_count = int(cursor.fetchone()[0])
+    remaining = max(0, 4-current_count)
+    if remaining <= 0:
+        return {"status":False,"message":"Maximum 4 profile photos allowed."}
+
+    saved=[]
+    try:
+        for upload in photos[:remaining]:
+            ext=os.path.splitext(upload.filename or "")[1].lower()
+            if ext not in allowed:
+                continue
+            content=upload.file.read()
+            if len(content) > 8*1024*1024:
+                continue
+            filename=f"{uuid.uuid4().hex}{ext}"
+            filepath=os.path.join(PROFILE_UPLOADS_DIR,filename)
+            with open(filepath,"wb") as f:
+                f.write(content)
+            url=f"/uploads/profile/{filename}"
+            cursor.execute("SELECT COUNT(*) FROM profile_photos WHERE user_id=?",(user_id,))
+            has_any = cursor.fetchone()[0] > 0
+            is_main = 0 if has_any else 1
+            cursor.execute(
+                "INSERT INTO profile_photos(user_id,photo,is_main) VALUES(?,?,?)",
+                (user_id,url,is_main)
+            )
+            saved.append(url)
+            try: upload.file.close()
+            except Exception: pass
+
+        if saved:
+            cursor.execute("SELECT photo FROM profile_photos WHERE user_id=? ORDER BY is_main DESC,id ASC LIMIT 1",(user_id,))
+            main = cursor.fetchone()
+            if main:
+                cursor.execute("UPDATE users SET photo=? WHERE id=?",(main["photo"],user_id))
+        conn.commit()
+        firebase_sync_async()
+        return {"status":True,"message":f"{len(saved)} photo(s) uploaded","photos":saved}
+    except Exception as e:
+        conn.rollback()
+        return {"status":False,"message":"Unable to upload photos."}
+
+
+@app.post("/delete-profile-photo/{user_id}")
+def delete_profile_photo(user_id:int, data:dict):
+    photo_id=int(data.get("photo_id",0))
+    cursor.execute("SELECT * FROM profile_photos WHERE id=? AND user_id=?",(photo_id,user_id))
+    row=cursor.fetchone()
+    if row is None:
+        return {"status":False,"message":"Photo not found"}
+
+    was_main=int(row["is_main"] or 0)==1
+    old_url=row["photo"]
+    cursor.execute("DELETE FROM profile_photos WHERE id=?",(photo_id,))
+
+    try:
+        path=os.path.join(BASE_DIR, old_url.lstrip("/").replace("/","/"))
+        if os.path.isfile(path): os.remove(path)
+    except Exception:
+        pass
+
+    cursor.execute("SELECT id,photo FROM profile_photos WHERE user_id=? ORDER BY is_main DESC,id ASC LIMIT 1",(user_id,))
+    replacement=cursor.fetchone()
+    if replacement:
+        if was_main:
+            cursor.execute("UPDATE profile_photos SET is_main=0 WHERE user_id=?",(user_id,))
+            cursor.execute("UPDATE profile_photos SET is_main=1 WHERE id=?",(replacement["id"],))
+        cursor.execute("UPDATE users SET photo=? WHERE id=?",(replacement["photo"],user_id))
+    else:
+        cursor.execute("UPDATE users SET photo='' WHERE id=?",(user_id,))
+
+    conn.commit()
+    firebase_sync_async()
+    return {"status":True,"message":"Photo deleted"}
+
+
+@app.post("/set-main-photo/{user_id}")
+def set_main_photo(user_id:int, data:dict):
+    photo_id=int(data.get("photo_id",0))
+    cursor.execute("SELECT id,photo FROM profile_photos WHERE id=? AND user_id=?",(photo_id,user_id))
+    row=cursor.fetchone()
+    if row is None:
+        return {"status":False,"message":"Photo not found"}
+    cursor.execute("UPDATE profile_photos SET is_main=0 WHERE user_id=?",(user_id,))
+    cursor.execute("UPDATE profile_photos SET is_main=1 WHERE id=?",(photo_id,))
+    cursor.execute("UPDATE users SET photo=? WHERE id=?",(row["photo"],user_id))
+    conn.commit()
+    firebase_sync_async()
+    return {"status":True,"message":"Main photo updated"}
+
 
 # =====================================================
 # UPLOAD PROFILE PHOTO
 # =====================================================
 
 @app.post("/upload-profile-photo/{user_id}")
-
 def upload_profile_photo(
-    user_id: int,
+    user_id:int,
     photo: UploadFile = File(...)
 ):
-
-    cursor.execute(
-
-        """
-
-        SELECT photo
-
-        FROM users
-
-        WHERE id=?
-
-        """,
-
-        (
-
-            user_id,
-
-        )
-
-    )
-
+    cursor.execute("SELECT photo FROM users WHERE id=?", (user_id,))
     user = cursor.fetchone()
-
     if user is None:
+        return {"status":False,"message":"User Not Found"}
 
-        return{
+    allowed={".jpg",".jpeg",".png",".webp",".gif"}
+    ext=os.path.splitext(photo.filename or "")[1].lower()
+    if ext not in allowed:
+        return {"status":False,"message":"Only JPG, PNG, WEBP or GIF images are allowed."}
 
-            "status":False,
+    try:
+        content=photo.file.read()
+        if len(content)>8*1024*1024:
+            return {"status":False,"message":"Photo must be below 8 MB."}
+        filename=str(uuid.uuid4())+ext
+        filepath=os.path.join(PROFILE_UPLOADS_DIR,filename)
+        with open(filepath,"wb") as buffer:
+            buffer.write(content)
+        photo_url="/uploads/profile/"+filename
 
-            "message":"User Not Found"
+        # Remove previous main-photo record and file.
+        cursor.execute("SELECT photo FROM profile_photos WHERE user_id=? AND is_main=1 LIMIT 1",(user_id,))
+        old_main=cursor.fetchone()
+        if old_main and old_main["photo"] and old_main["photo"] != photo_url:
+            old_path=os.path.join(BASE_DIR,old_main["photo"].lstrip("/"))
+            try:
+                if os.path.isfile(old_path): os.remove(old_path)
+            except Exception: pass
+        cursor.execute("DELETE FROM profile_photos WHERE user_id=? AND is_main=1",(user_id,))
+        cursor.execute("INSERT INTO profile_photos(user_id,photo,is_main) VALUES(?,?,1)",(user_id,photo_url))
+        cursor.execute("UPDATE users SET photo=? WHERE id=?",(photo_url,user_id))
+        conn.commit()
+        firebase_sync_async()
+        return {"status":True,"message":"Profile Photo Uploaded Successfully","photo":photo_url}
+    except Exception as e:
+        try:
+            if 'filepath' in locals() and os.path.exists(filepath): os.remove(filepath)
+        except Exception: pass
+        return {"status":False,"message":"Unable to upload photo."}
+    finally:
+        try: photo.file.close()
+        except Exception: pass
 
-        }
-
-    # Delete old profile photo
-
-    if user["photo"]:
-
-        old_path = user["photo"].replace("/uploads/", "uploads/")
-
-        if os.path.exists(old_path):
-
-            os.remove(old_path)
-
-    # Generate unique filename
-
-    extension = photo.filename.split(".")[-1]
-
-    filename = str(uuid.uuid4()) + "." + extension
-
-    filepath = os.path.join(PROFILE_UPLOADS_DIR, filename)
-
-    # Save new photo
-
-    with open(filepath, "wb") as buffer:
-
-        shutil.copyfileobj(photo.file, buffer)
-
-    photo_url = "/uploads/profile/" + filename
-
-    # Update database
-
-    cursor.execute(
-
-        """
-
-        UPDATE users
-
-        SET photo=?
-
-        WHERE id=?
-
-        """,
-
-        (
-
-            photo_url,
-
-            user_id
-
-        )
-
-    )
-
-    conn.commit()
-
-    return{
-
-        "status":True,
-
-        "message":"Profile Photo Uploaded Successfully",
-
-        "photo":photo_url
-
-    }
 
 # =====================================================
 # UPDATE PROFILE
@@ -1350,7 +1529,7 @@ def search_users(data: SearchModel):
         query += " AND city LIKE ?"
         params.append("%" + data.city + "%")
 
-    query += " ORDER BY id DESC"
+    query += " ORDER BY id DESC LIMIT 60"
 
     cursor.execute(query, tuple(params))
 
@@ -1764,18 +1943,14 @@ def get_chat(sender_id:int,receiver_id:int):
 
         """
 
-        SELECT *
-
-        FROM messages
-
-        WHERE
-
-        (sender_id=? AND receiver_id=?)
-
-        OR
-
-        (sender_id=? AND receiver_id=?)
-
+        SELECT * FROM (
+            SELECT *
+            FROM messages
+            WHERE (sender_id=? AND receiver_id=?)
+               OR (sender_id=? AND receiver_id=?)
+            ORDER BY id DESC
+            LIMIT 200
+        ) recent_messages
         ORDER BY id ASC
 
         """,
@@ -1810,93 +1985,25 @@ def get_chat(sender_id:int,receiver_id:int):
 # =====================================================
 
 @app.get("/conversations/{user_id}")
-
 def conversations(user_id:int):
-
-    cursor.execute(
-
-        """
-
+    cursor.execute("""
         SELECT DISTINCT
-
-        CASE
-
-        WHEN sender_id=?
-
-        THEN receiver_id
-
-        ELSE sender_id
-
-        END AS partner_id
-
-        FROM messages
-
-        WHERE sender_id=?
-
-        OR receiver_id=?
-
-        """,
-
-        (
-
-            user_id,
-
-            user_id,
-
-            user_id
-
-        )
-
-    )
-
-    ids=cursor.fetchall()
-
-    users=[]
-
-    for i in ids:
-
-        cursor.execute(
-
-            """
-
-            SELECT
-
-            id,
-
-            name,
-
-            photo,
-
-            city
-
-            FROM users
-
-            WHERE id=?
-
-            """,
-
-            (
-
-                i["partner_id"],
-
-            )
-
-        )
-
-        u=cursor.fetchone()
-
-        if u:
-
-            users.append(dict(u))
-
-    return{
-
+            u.id, u.name, u.photo, u.city
+        FROM users u
+        INNER JOIN (
+            SELECT DISTINCT
+                CASE WHEN sender_id=? THEN receiver_id ELSE sender_id END AS partner_id
+            FROM messages
+            WHERE sender_id=? OR receiver_id=?
+        ) p ON p.partner_id=u.id
+        ORDER BY u.id DESC
+        LIMIT 50
+    """,(user_id,user_id,user_id))
+    users=[dict(r) for r in cursor.fetchall()]
+    return {
         "status":True,
-
         "total":len(users),
-
         "conversations":users
-
     }
 
 
@@ -3013,6 +3120,65 @@ def admin_matches():
     }
 
 # =====================================================
+# SMART MATCHES
+# =====================================================
+
+@app.get("/smart-matches/{user_id}")
+def smart_matches(user_id:int):
+    cursor.execute("SELECT * FROM users WHERE id=?",(user_id,))
+    me=cursor.fetchone()
+    if me is None:
+        return {"status":False,"message":"User not found","matches":[]}
+
+    cursor.execute("""
+        SELECT id,name,age,height,religion,caste,education,occupation,city,state,country,photo,is_verified
+        FROM users
+        WHERE id!=?
+        ORDER BY id DESC
+        LIMIT 60
+    """,(user_id,))
+    rows=cursor.fetchall()
+    out=[]
+    for r in rows:
+        d=dict(r)
+        score=40
+        reasons=[]
+        if me["religion"] and d["religion"] and me["religion"].strip().lower()==d["religion"].strip().lower(): score+=15;reasons.append("Same religion")
+        if me["caste"] and d["caste"] and me["caste"].strip().lower()==d["caste"].strip().lower(): score+=10;reasons.append("Same caste")
+        if me["city"] and d["city"] and me["city"].strip().lower()==d["city"].strip().lower(): score+=10;reasons.append("Same city")
+        if me["education"] and d["education"] and me["education"].strip().lower()==d["education"].strip().lower(): score+=8;reasons.append("Similar education")
+        if me["occupation"] and d["occupation"] and me["occupation"].strip().lower()==d["occupation"].strip().lower(): score+=5;reasons.append("Similar career")
+        d["match_percent"]=min(score,99)
+        d["match_reasons"]=reasons
+        d["mutual_match"]=False
+        out.append(d)
+    out.sort(key=lambda x:(-x["match_percent"], -int(x["id"])))
+    return {"status":True,"matches":out[:30]}
+
+
+@app.post("/respond-interest")
+def respond_interest(data:dict):
+    user_id=int(data.get("user_id",0))
+    other_id=int(data.get("other_id",0))
+    status=str(data.get("status","")).strip()
+    if status not in {"Accepted","Rejected"}:
+        return {"status":False,"message":"Invalid status"}
+    cursor.execute("""
+        SELECT id FROM interests
+        WHERE sender_id=? AND receiver_id=?
+        ORDER BY id DESC LIMIT 1
+    """,(other_id,user_id))
+    row=cursor.fetchone()
+    if row is None:
+        return {"status":False,"message":"Interest not found"}
+    cursor.execute("UPDATE interests SET status=? WHERE id=?",(status,row["id"]))
+    conn.commit()
+    if status=="Accepted":
+        create_notification(other_id,"Interest Accepted ❤️","Your interest was accepted.")
+    return {"status":True,"message":"Interest "+status+" successfully ❤️"}
+
+
+# =====================================================
 # MY MATCHES
 # =====================================================
 
@@ -3090,6 +3256,7 @@ def my_matches(user_id:int):
 
         AND interests.status='Accepted'
 
+        LIMIT 100
         """,
 
         (
