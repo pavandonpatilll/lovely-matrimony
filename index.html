@@ -3296,32 +3296,103 @@ async function viewProfile(profileId){
 
 const content=document.getElementById("userProfileContent");
 showSection("userProfile");
+
+if(!content){
+  return;
+}
+
 content.innerHTML='<div class="pmInlineState">Loading profile… ❤️</div>';
 
-saveProfileView(profileId);
+const id=Number(profileId);
+if(!Number.isInteger(id)||id<=0){
+  content.innerHTML='<div class="pmInlineState">Invalid profile ❤️</div>';
+  return;
+}
+
+saveProfileView(id);
 
 try{
-  const data=await window.pmApiFetch("/profile-full/"+profileId,{},2);
-  if(!data.status)throw new Error(data.message||"Profile not found");
+
+  // Primary: full profile + gallery.
+  let data;
+
+  try{
+    data=await window.pmApiFetch("/profile-full/"+id,{},1);
+  }catch(primaryError){
+    // Compatibility fallback for an older Render deployment.
+    data=await window.pmApiFetch("/profile/"+id,{},1);
+    if(data && data.status){
+      data.photos=data.profile?.photo
+        ? [{id:0,photo:data.profile.photo,is_main:1}]
+        : [];
+    }
+  }
+
+  if(!data || !data.status){
+    throw new Error(data?.message||"Profile not found");
+  }
 
   const p=data.profile||{};
-  const photos=(data.photos||[]);
-  const allPhotos=photos.length?photos:(p.photo?[{id:0,photo:p.photo,is_main:1}]:[]);
+  const photos=Array.isArray(data.photos)?data.photos:[];
+  const allPhotos=photos.length
+    ? photos
+    : (p.photo?[{id:0,photo:p.photo,is_main:1}]:[]);
+
   const first=allPhotos[0]?.photo||"";
   const name=escapeHtml(p.name||"Profile");
+
+  const photoUrl=(path)=>{
+    if(!path)return "";
+    return String(path).startsWith("http")
+      ? String(path)
+      : window.PM_API+String(path);
+  };
 
   content.innerHTML=`<div class="pmFullTop">
     <button onclick="showSection('search')">← Back</button>
     <div style="flex:1;font-weight:900;font-size:18px;text-align:center;">Full Profile</div>
     <div style="width:65px"></div>
   </div>
+
   <div class="pmFullHero">
-    ${first?`<img id="userProfileMainPhoto" class="pmFullHeroMain" loading="eager" decoding="async" src="${window.PM_API+first}" alt="${name}">`:`<div id="userProfileMainPhoto" class="pmFullHeroMain" style="display:flex;align-items:center;justify-content:center;font-size:80px;">❤️</div>`}
-    <div class="pmFullThumbs">${allPhotos.map((ph,i)=>`<img loading="lazy" decoding="async" class="${i===0?'active':''}" src="${window.PM_API+ph.photo}" alt="Photo ${i+1}" onclick="selectFullProfilePhoto(this,'${window.PM_API+ph.photo}')">`).join("")}</div>
+    ${first
+      ? `<img id="userProfileMainPhoto"
+              class="pmFullHeroMain"
+              loading="eager"
+              decoding="async"
+              src="${photoUrl(first)}"
+              alt="${name}">`
+      : `<div id="userProfileMainPhoto"
+              class="pmFullHeroMain"
+              style="display:flex;align-items:center;justify-content:center;font-size:80px;">
+              ❤️
+         </div>`}
+
+    <div class="pmFullThumbs">
+      ${allPhotos.map((ph,i)=>{
+        const url=photoUrl(ph.photo);
+        return `<img loading="lazy"
+                     decoding="async"
+                     class="${i===0?'active':''}"
+                     src="${url}"
+                     alt="Photo ${i+1}"
+                     onclick="selectFullProfilePhoto(this,'${url}')">`;
+      }).join("")}
+    </div>
   </div>
+
   <div class="pmFullCard">
-    <div class="pmFullName">${name} ${p.is_verified?'✓':''}</div>
-    <div class="pmFullMeta">${p.age?`🎂 ${p.age} years`:''}${p.city?` · 📍 ${escapeHtml(p.city)}`:''}${p.state?`, ${escapeHtml(p.state)}`:''}</div>
+
+    <div class="pmFullName">
+      ${name} ${p.is_verified?'✓':''}
+    </div>
+
+    <div class="pmFullMeta">
+      ${p.age?`🎂 ${p.age} years`:''}
+      ${p.city?` · 📍 ${escapeHtml(p.city)}`:''}
+      ${p.state?`, ${escapeHtml(p.state)}`:''}
+    </div>
+
     <div class="pmFullGrid">
       <div class="pmFullItem"><b>Gender</b>${escapeHtml(p.gender||"—")}</div>
       <div class="pmFullItem"><b>Looking For</b>${escapeHtml(p.looking_for||"—")}</div>
@@ -3332,17 +3403,42 @@ try{
       <div class="pmFullItem"><b>Occupation</b>${escapeHtml(p.occupation||"—")}</div>
       <div class="pmFullItem"><b>Country</b>${escapeHtml(p.country||"—")}</div>
     </div>
-    <div class="pmFullAbout"><b>About</b><br>${escapeHtml(p.about||"This member has not added an introduction yet.")}</div>
-    <div style="margin-top:10px;color:#9b2cff;font-weight:800;">❤️ ${allPhotos.length}/4 photos</div>
+
+    <div class="pmFullAbout">
+      <b>About</b><br>
+      ${escapeHtml(p.about||"This member has not added an introduction yet.")}
+    </div>
+
+    <div style="margin-top:10px;color:#9b2cff;font-weight:800;">
+      ❤️ ${allPhotos.length}/4 photos
+    </div>
+
     <div class="pmFullActions">
-      <button class="pmFullInterest" onclick="sendInterest(${p.id})">❤️ Send Interest</button>
-      <button class="pmFullChat" onclick="startProfileChat(${p.id},'${String(p.name||'').replace(/'/g,"\\'")}')">💬 Chat</button>
+      <button class="pmFullInterest"
+              onclick="sendInterest(${p.id})">
+        ❤️ Send Interest
+      </button>
+
+      <button class="pmFullChat"
+              onclick="startProfileChat(${p.id},'${String(p.name||'').replace(/'/g,"\\'")}')">
+        💬 Chat
+      </button>
     </div>
   </div>`;
 
+  window.currentProfileId=id;
+
 }catch(error){
-  console.log("profile",error);
-  content.innerHTML='<div class="pmInlineState">Profile could not load right now. Please try again ❤️<br><button class="btn" style="max-width:220px;margin-top:15px;" onclick="viewProfile('+profileId+')">Retry</button></div>';
+
+  console.error("Prem Milan profile load failed:",error);
+
+  content.innerHTML=
+    '<div class="pmInlineState">'+
+    'Profile could not load right now ❤️<br>'+
+    '<small style="color:#777;">Server response nahi mila.</small><br>'+
+    '<button class="btn" style="max-width:220px;margin-top:15px;" '+
+    'onclick="viewProfile('+id+')">Retry</button>'+
+    '</div>';
 }
 }
 
@@ -3438,7 +3534,9 @@ async function pmLoadGallery(){const uid=localStorage.getItem("userId"),box=docu
 async function pmUploadPhotos(input){const files=Array.from(input.files||[]);if(!files.length)return;const uid=localStorage.getItem("userId");if(!uid)return alert("Please login first.");const fd=new FormData();files.slice(0,4).forEach(f=>fd.append("photos",f));try{const d=await (await fetch(PM_API+"/upload-profile-photos/"+uid,{method:"POST",body:fd})).json();alert(d.message||"Photos uploaded");input.value="";pmLoadGallery();if(typeof loadProfile==="function")loadProfile()}catch(e){alert("Unable to upload photos.")}}
 async function pmDeletePhoto(id){if(!confirm("Delete this photo?"))return;const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/delete-profile-photo/"+uid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo_id:id})})).json();alert(d.message);if(d.status)pmLoadGallery()}
 async function pmSetMain(id){const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/set-main-photo/"+uid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo_id:id})})).json();alert(d.message);if(d.status){pmLoadGallery();if(typeof loadProfile==="function")loadProfile()}}
-async function pmOpenProfile(id){try{const d=await (await fetch(PM_API+"/profile-full/"+id)).json();if(!d.status)return alert(d.message||"Profile not found");const p=d.profile,photos=d.photos||[],first=photos[0]?.photo||p.photo||"",c=document.getElementById("pmProfileContent");c.innerHTML=`<div class="pmHero"><img id="pmHeroImage" src="${pmUrl(first)}"><div class="pmThumbs">${photos.map((x,i)=>`<img class="${i===0?'active':''}" src="${pmUrl(x.photo)}" onclick="pmSelectImage(this,'${pmUrl(x.photo)}')">`).join("")}</div></div><div class="pmInfo"><div class="pmName">${p.name||"Profile"} ${p.is_verified?'✓':''}</div><div class="pmMeta">📍 ${p.city||""}${p.state?', '+p.state:''} · ${p.age||'—'} years · ${p.height||'—'}</div><div class="pmChips">${p.religion?`<span class="pmChip">🛕 ${p.religion}</span>`:''}${p.caste?`<span class="pmChip">👥 ${p.caste}</span>`:''}${p.education?`<span class="pmChip">🎓 ${p.education}</span>`:''}${p.occupation?`<span class="pmChip">💼 ${p.occupation}</span>`:''}</div><div class="pmAbout"><b>About</b><br>${p.about||"This member has not added an introduction yet."}</div><div class="pmScore">❤️ Genuine profile • ${photos.length}/4 photos</div><div class="pmActions"><button class="pmLike" onclick="pmSendInterest(${p.id})">❤️ Send Interest</button><button class="pmChat" onclick="pmStartChat(${p.id},'${String(p.name||'').replace(/'/g,"\\'")}')">💬 Chat</button></div></div>`;document.getElementById("pmProfileModal").classList.remove("hidden")}catch(e){alert("Unable to load profile.")}}
+async function pmOpenProfile(id){
+  return viewProfile(id);
+}
 function pmSelectImage(el,url){document.getElementById("pmHeroImage").src=url;document.querySelectorAll(".pmThumbs img").forEach(x=>x.classList.remove("active"));el.classList.add("active")}
 function pmCloseProfile(){document.getElementById("pmProfileModal").classList.add("hidden")}
 async function pmSendInterest(id){const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/send-interest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sender_id:+uid,receiver_id:id})})).json();alert(d.message)}

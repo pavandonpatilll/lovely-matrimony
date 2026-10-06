@@ -1132,12 +1132,25 @@ def profile_full(user_id:int):
 
     profile=dict(user)
     profile.pop("password", None)
+
+    # Keep the legacy users.photo synchronized with the selected main gallery photo.
+    if photos:
+        main_photo = next((p for p in photos if int(p.get("is_main") or 0) == 1), photos[0])
+        if main_photo.get("photo") and profile.get("photo") != main_photo.get("photo"):
+            profile["photo"] = main_photo["photo"]
+
     return {
         "status":True,
         "profile":profile,
         "photos":photos
     }
 
+
+
+# Compatibility alias for older frontend deployments.
+@app.get("/user-profile/{user_id}")
+def user_profile_alias(user_id: int):
+    return profile_full(user_id)
 
 @app.post("/upload-profile-photos/{user_id}")
 def upload_profile_photos(user_id:int, photos:list[UploadFile]=File(...)):
