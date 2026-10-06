@@ -134,9 +134,7 @@ background:#dc3545;
 
 </style>
 
-<style id="PREM ADMIN RESPONSIVE">
-*{box-sizing:border-box}html,body{max-width:100%;overflow-x:hidden}table{width:100%;display:block;overflow-x:auto;white-space:nowrap}input,select,button,textarea{max-width:100%;font:inherit}@media(max-width:700px){body{padding:10px!important}.card,.container,.adminContainer{width:100%!important;max-width:100%!important}.stats,.cards,.grid{grid-template-columns:1fr!important}.modal>div{width:96%!important;margin:15px auto!important;padding:14px!important}table{font-size:12px}.btn,button{min-height:42px}}
-</style><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script></head>
+</head>
 
 <body>
 
@@ -155,10 +153,6 @@ Last Update : --
 
 </p>
 
-<div style="text-align:center;margin:12px 0;">
-<button onclick="firebaseSyncNow()" style="background:#6f42c1;padding:10px 18px;border-radius:10px;">🔥 Sync All Data to Firebase</button>
-<span id="firebaseStatus" style="margin-left:10px;font-weight:bold;">Firebase: checking…</span>
-</div>
 <div class="container">
 
 <div style="margin-bottom:20px;">
@@ -420,7 +414,7 @@ async function loadBlockedUsers(){
 
             html = `
             <tr>
-                <td colspan="5" style="text-align:center;">
+                <td colspan="6" style="text-align:center;">
                     No Blocked Users 🚫
                 </td>
             </tr>
@@ -443,6 +437,8 @@ async function loadBlockedUsers(){
                 <td>${user.reason}</td>
 
                 <td>${user.date}</td>
+
+                <td>${(user.user_deleted||user.blocked_deleted)?'🔴 Disabled':'🟢 Active'}</td>
 
                 </tr>
 
@@ -932,7 +928,7 @@ async function blockUser(userId){
 
 async function deleteUser(userId){
 
-    if(!confirm("Delete this user?")){
+    if(!confirm("Permanently disable this user? Their profile, login, chat and app actions will stop working.")){
         return;
     }
 
@@ -1140,35 +1136,10 @@ loadBlockedUsers();
 },30000);
 
 
-
-async function firebaseSyncNow(){
-    const el=document.getElementById("firebaseStatus");
-    try{
-        const r=await fetch(API+"/admin/firebase-sync",{method:"POST"});
-        const d=await r.json();
-        el.textContent=d.status?"Firebase: synced ✅":"Firebase: "+(d.message||"not configured");
-        el.style.color=d.status?"green":"#c00";
-        alert(d.message||"Firebase sync complete");
-    }catch(e){
-        el.textContent="Firebase: connection error";
-        el.style.color="#c00";
-        alert("Firebase sync failed");
-    }
-}
-async function checkFirebaseStatus(){
-    try{
-        const r=await fetch(API+"/firebase-status");
-        const d=await r.json();
-        const el=document.getElementById("firebaseStatus");
-        el.textContent=d.firebase_enabled?"Firebase: connected ✅":"Firebase: not configured ❌";
-        el.style.color=d.firebase_enabled?"green":"#c00";
-    }catch(e){}
-}
-checkFirebaseStatus();
 </script>
 
 
-<div id="viewPopup
+<div id="viewPopup"
 style="
 display:none;
 position:fixed;
@@ -1430,6 +1401,7 @@ cursor:pointer;
 <th>Blocked User</th>
 <th>Reason</th>
 <th>Date</th>
+<th>Status</th>
 
 </tr>
 
@@ -1454,8 +1426,5 @@ No Blocked Users
 </div>
 
 </div>
-<script id="premFirebaseAdminBridge">
-(function(){const cfg={apiKey:"AIzaSyAQhLVswUkY9LOKyXZUdAcizEjN6Htm1vk",authDomain:"prem-milan-45f6f.firebaseapp.com",projectId:"prem-milan-45f6f",storageBucket:"prem-milan-45f6f.firebasestorage.app",messagingSenderId:"383336320685",appId:"1:383336320685:web:b590dc055a26fa56c3c024",measurementId:"G-CQ5HQDDSNV"};try{if(window.firebase){const app=window.firebase.apps.length?window.firebase.app():window.firebase.initializeApp(cfg);window.pmAdminFirebase={app,auth:firebase.auth(),db:firebase.firestore(),ready:true};}}catch(e){console.warn("Firebase admin bridge skipped",e);window.pmAdminFirebase={ready:false};}})();
-</script>
 </body>
 </html>

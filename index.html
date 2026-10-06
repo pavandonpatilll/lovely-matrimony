@@ -1476,7 +1476,7 @@ Profile
 .pmFullTop{display:flex;align-items:center;gap:10px;margin-bottom:14px;position:sticky;top:0;z-index:5;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);padding:8px;border-radius:16px}
 .pmFullTop button{border:0;background:#ffedf2;color:#d51f49;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
 .pmFullHero{background:#111;border-radius:22px;overflow:hidden}
-.pmFullHeroMain{width:100%;height:min(68dvh,520px);display:block;object-fit:cover;background:#eee}
+.pmFullHeroMain{width:100%;height:min(72dvh,560px);display:block;object-fit:contain;object-position:center;background:#111;image-rendering:auto}
 .pmFullThumbs{display:flex;gap:8px;overflow:auto;padding:10px;background:#111}
 .pmFullThumbs img{width:68px;height:68px;object-fit:cover;border-radius:12px;border:2px solid transparent;cursor:pointer;flex:0 0 auto}
 .pmFullThumbs img.active{border-color:#ff4d6d}
@@ -1492,7 +1492,7 @@ Profile
 .pmFullInterest{background:linear-gradient(135deg,#ff2d55,#ff6f8f);color:#fff}
 .pmFullChat{background:#eee;color:#222}
 .pmInlineState{text-align:center;padding:35px;color:#777}
-@media(max-width:520px){.pmFullGrid{grid-template-columns:1fr}.pmFullHeroMain{height:min(62dvh,440px)}.pmFullName{font-size:24px}}
+@media(max-width:520px){.pmFullGrid{grid-template-columns:1fr}.pmFullHeroMain{height:min(68dvh,480px)}.pmFullName{font-size:24px}}
 </style>
 <script>
 
@@ -2118,20 +2118,35 @@ chatInterval = null;
 
 }
 
+function setChatAvailability(blocked){
+  const input=document.getElementById("chatInput");
+  const send=document.querySelector('#chatBox button[onclick="sendChat()"]');
+  const photo=document.getElementById("chatPhotoInput");
+  if(input)input.disabled=!!blocked;
+  if(send)send.disabled=!!blocked;
+  if(photo)photo.disabled=!!blocked;
+}
+
 async function loadChat(){
 const senderId=parseInt(localStorage.getItem("userId")||"0");
 if(!senderId||!currentReceiver)return;
 try{
 const response=await fetch(PM_API+"/chat/"+senderId+"/"+currentReceiver,{cache:"no-store"});
 const result=await response.json();
+if(result.blocked){
+  document.getElementById("chatMessages").innerHTML='<div style="text-align:center;color:#b00020;padding:35px 15px;font-weight:700;">🚫 Chat is blocked between you and this user.</div>';
+  setChatAvailability(true);
+  return;
+}
 if(!result.status)return;
+setChatAvailability(false);
 let html="";
 (result.messages||[]).forEach(msg=>{
 const mine=Number(msg.sender_id)===senderId;
 const media=msg.media_url?pmUrl(msg.media_url):"";
 html+=`<div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:9px 0;">
 <div style="max-width:min(78%,360px);position:relative;padding:9px 11px;border-radius:17px;background:${mine?'#ff4d6d':'#eeeeee'};color:${mine?'white':'black'};overflow:hidden;">
-${media?`<img src="${media}" loading="lazy" alt="Photo" onclick="window.open('${media}','_blank')" style="display:block;width:min(250px,100%);max-height:300px;object-fit:cover;border-radius:12px;cursor:pointer;">`:''}
+${media?`<img src="${media}" loading="lazy" alt="Photo" onclick="window.open('${media}','_blank')" style="display:block;width:100%;max-width:320px;height:auto;max-height:360px;object-fit:contain;object-position:center;background:#111;border-radius:12px;cursor:pointer;">`:''}
 ${msg.message&&msg.message!=="[Photo]"?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;">${escapeHtml(msg.message)}</div>`:''}
 ${mine?`<button onclick="deleteChatMessage(${msg.id})" title="Delete" style="position:absolute;right:5px;top:5px;border:0;background:rgba(255,255,255,.9);border-radius:50%;width:28px;height:28px;cursor:pointer;">🗑</button>`:''}
 </div></div>`;
@@ -2144,6 +2159,7 @@ const box=document.getElementById("chatMessages");box.scrollTop=box.scrollHeight
 function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 async function sendChatPhoto(input){
+if(!(await pmAccountGuard())){input.value="";return;}
 const file=input.files&&input.files[0];
 if(!file)return;
 if(file.size>8*1024*1024){alert("Photo must be below 8 MB.");input.value="";return;}
@@ -2153,6 +2169,7 @@ try{
 const fd=new FormData();fd.append("photo",file);
 const r=await fetch(PM_API+"/upload-chat-photo/"+uid+"/"+currentReceiver,{method:"POST",body:fd});
 const d=await r.json();
+if(d.blocked){alert(d.message||"Chat is blocked.");loadChat();return;}
 if(!d.status)alert(d.message||"Unable to send photo.");else loadChat();
 }catch(e){console.log(e);alert("Unable to send photo.");}
 input.value="";
@@ -3158,7 +3175,7 @@ return;
 try{
 
 const response = await fetch(
-"https://lovely-matrimony-q4vn.onrender.com/block-user",
+PM_API+"/block-user",
 {
 
 method:"POST",
@@ -3182,6 +3199,10 @@ reason:reason.trim()
 const result = await response.json();
 
 alert(result.message);
+if(result.status && Number(receiverId)===Number(currentReceiver)){
+  closeChat();
+  loadConversations();
+}
 
 const menu=document.getElementById("chatMenu");
 if(menu){
@@ -3348,6 +3369,9 @@ try{
       : window.PM_API+String(path);
   };
 
+  window.pmFullPhotos=allPhotos.map(x=>photoUrl(x.photo)).filter(Boolean);
+  window.pmFullIndex=0;
+
   content.innerHTML=`<div class="pmFullTop">
     <button onclick="showSection('search')">← Back</button>
     <div style="flex:1;font-weight:900;font-size:18px;text-align:center;">Full Profile</div>
@@ -3360,6 +3384,8 @@ try{
               class="pmFullHeroMain"
               loading="eager"
               decoding="async"
+              ontouchstart="pmTouchStart(event)"
+              ontouchend="pmTouchEnd(event)"
               src="${photoUrl(first)}"
               alt="${name}">`
       : `<div id="userProfileMainPhoto"
@@ -3442,11 +3468,35 @@ try{
 }
 }
 
-function selectFullProfilePhoto(el,url){
+window.pmFullPhotos=[];
+window.pmFullIndex=0;
+let pmTouchStartX=0;
+
+function pmSetFullPhoto(index){
+  if(!window.pmFullPhotos.length)return;
+  window.pmFullIndex=(index+window.pmFullPhotos.length)%window.pmFullPhotos.length;
   const main=document.getElementById("userProfileMainPhoto");
-  if(main && main.tagName==='IMG')main.src=url;
-  document.querySelectorAll(".pmFullThumbs img").forEach(x=>x.classList.remove("active"));
-  el.classList.add("active");
+  if(main&&main.tagName==='IMG')main.src=window.pmFullPhotos[window.pmFullIndex];
+  document.querySelectorAll(".pmFullThumbs img").forEach((x,i)=>x.classList.toggle("active",i===window.pmFullIndex));
+}
+
+function selectFullProfilePhoto(el,url){
+  const list=window.pmFullPhotos||[];
+  const index=list.indexOf(url);
+  pmSetFullPhoto(index>=0?index:0);
+}
+
+function pmTouchStart(e){
+  const t=e.touches&&e.touches[0];
+  if(t)pmTouchStartX=t.clientX;
+}
+
+function pmTouchEnd(e){
+  const t=e.changedTouches&&e.changedTouches[0];
+  if(!t||!window.pmFullPhotos.length)return;
+  const dx=t.clientX-pmTouchStartX;
+  if(Math.abs(dx)<45)return;
+  pmSetFullPhoto(window.pmFullIndex+(dx<0?1:-1));
 }
 
 function startProfileChat(id,name){
@@ -3459,6 +3509,7 @@ function startProfileChat(id,name){
 
 async function sendChat(){
 
+if(!(await pmAccountGuard()))return;
 const senderId=localStorage.getItem("userId");
 
 const message=document.getElementById("chatInput").value.trim();
@@ -3473,7 +3524,7 @@ try{
 
 const response=await fetch(
 
-"https://lovely-matrimony-q4vn.onrender.com/send-message",
+PM_API+"/send-message",
 
 {
 
@@ -3522,7 +3573,27 @@ alert("Unable to send message.");
 }
 
 }
-autoLogin();
+window.pmAccountGuard=async function(){
+  const uid=parseInt(localStorage.getItem("userId")||"0");
+  if(!uid)return true;
+  try{
+    const d=await window.pmApiFetch("/session-status/"+uid,{},0);
+    if(d && d.active===false){
+      localStorage.clear();
+      alert("This profile has been disabled by admin.");
+      location.reload();
+      return false;
+    }
+  }catch(e){}
+  return true;
+};
+
+async function pmGuardedAutoLogin(){
+  if(await pmAccountGuard())autoLogin();
+}
+
+pmGuardedAutoLogin();
+setInterval(pmAccountGuard,20000);
 
 </script>
 

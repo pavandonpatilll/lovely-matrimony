@@ -10,8 +10,15 @@ import uuid
 import os
 import json
 import threading
+import datetime
+import secrets
+from urllib.parse import quote, unquote
 import firebase_admin
 from firebase_admin import credentials, firestore, auth as firebase_auth
+try:
+    from firebase_admin import storage as firebase_storage
+except Exception:
+    firebase_storage = None
 
 # =====================================================
 # APP
@@ -61,9 +68,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # The private service-account key is NEVER sent to the browser.
 FIREBASE_ENABLED = False
 firebase_db = None
+FIREBASE_STORAGE_ENABLED = False
+firebase_bucket = None
 
 def init_firebase():
-    global FIREBASE_ENABLED, firebase_db
+    global FIREBASE_ENABLED, firebase_db, FIREBASE_STORAGE_ENABLED, firebase_bucket
     try:
         raw = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
         if not raw:
@@ -78,14 +87,56 @@ def init_firebase():
 
         firebase_db = firestore.client()
         FIREBASE_ENABLED = True
+
+        # Firebase Storage is optional because the project must have Storage/billing enabled.
+        if firebase_storage is not None:
+            try:
+                firebase_bucket = firebase_storage.bucket()
+                FIREBASE_STORAGE_ENABLED = True
+            except Exception as storage_error:
+                firebase_bucket = None
+                FIREBASE_STORAGE_ENABLED = False
+                print("Firebase Storage unavailable (local upload fallback):", storage_error)
         return True
     except Exception as e:
         print("Firebase init warning:", e)
         FIREBASE_ENABLED = False
         firebase_db = None
+        FIREBASE_STORAGE_ENABLED = False
+        firebase_bucket = None
         return False
 
 init_firebase()
+
+def store_uploaded_bytes(content, folder, filename, content_type):
+    """Store media in Firebase Storage when available; otherwise keep the existing local upload path."""
+    if FIREBASE_STORAGE_ENABLED and firebase_bucket is not None:
+        blob_name = f"prem-milan/{folder}/{filename}"
+        blob = firebase_bucket.blob(blob_name)
+        token = secrets.token_urlsafe(32)
+        blob.metadata = {"firebaseStorageDownloadTokens": token}
+        blob.upload_from_string(content, content_type=content_type or "application/octet-stream")
+        bucket_name = firebase_bucket.name
+        return f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{quote(blob_name, safe='')}?alt=media&token={quote(token, safe='')}"
+    return None
+
+def delete_stored_media(media_url, local_dir=None):
+    if not media_url:
+        return
+    try:
+        if media_url.startswith("https://firebasestorage.googleapis.com/") and FIREBASE_STORAGE_ENABLED and firebase_bucket is not None:
+            marker = "/o/"
+            if marker in media_url:
+                encoded = media_url.split(marker,1)[1].split("?",1)[0]
+                blob_name = unquote(encoded)
+                firebase_bucket.blob(blob_name).delete()
+            return
+        if local_dir and media_url.startswith("/uploads/"):
+            path = os.path.join(BASE_DIR, media_url.lstrip("/"))
+            if os.path.isfile(path):
+                os.remove(path)
+    except Exception as storage_delete_error:
+        print("Media delete warning:", storage_delete_error)
 
 def firebase_email_for_mobile(mobile):
     digits = "".join(ch for ch in str(mobile) if ch.isdigit())
@@ -333,6 +384,17 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
 
+conn.commit()
+
+# Safe migration for existing users table.
+for _sql in [
+    "ALTER TABLE users ADD COLUMN is_deleted INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN deleted_at TEXT",
+]:
+    try:
+        cursor.execute(_sql)
+    except Exception:
+        pass
 conn.commit()
 
 # =====================================================
@@ -879,6 +941,29 @@ if admin is None:
 # Restore cloud data if this Render instance starts with an empty SQLite DB.
 firebase_restore_if_empty()
 
+def active_user(user_id):
+    cursor.execute("SELECT * FROM users WHERE id=? AND COALESCE(is_deleted,0)=0", (int(user_id),))
+    return cursor.fetchone()
+
+def ensure_active_user(user_id):
+    return active_user(user_id) is not None
+
+def users_blocked(user_a, user_b):
+    cursor.execute("""
+        SELECT id FROM blocks
+        WHERE (user_id=? AND blocked_user=?)
+           OR (user_id=? AND blocked_user=?)
+        LIMIT 1
+    """, (int(user_a), int(user_b), int(user_b), int(user_a)))
+    return cursor.fetchone() is not None
+
+def ensure_pair_available(user_a, user_b):
+    if not ensure_active_user(user_a) or not ensure_active_user(user_b):
+        return False, "This account is unavailable."
+    if users_blocked(user_a, user_b):
+        return False, "Chat is blocked between these users."
+    return True, ""
+
 # =====================================================
 # HOME
 # =====================================================
@@ -890,6 +975,19 @@ def home():
         "status": True,
         "message": " Prem Milan Backend Running ❤️"
     }
+
+# =====================================================
+# SESSION STATUS
+# =====================================================
+@app.get("/session-status/{user_id}")
+def session_status(user_id:int):
+    user=active_user(user_id)
+    return {
+        "status": True,
+        "active": bool(user),
+        "message": "Account active" if user else "This profile has been disabled by admin."
+    }
+
 
 # =====================================================
 # TOTAL USERS
@@ -1017,6 +1115,9 @@ def login(user: LoginModel):
             "message": "User Not Found"
         }
 
+    if int(data["is_deleted"] or 0) == 1:
+        return {"status":False,"message":"This profile has been disabled by admin."}
+
     if data["password"] != hash_password(user.password):
 
         return {
@@ -1072,7 +1173,7 @@ def get_profile(user_id:int):
 
         FROM users
 
-        WHERE id=?
+        WHERE id=? AND COALESCE(is_deleted,0)=0
 
         """,
 
@@ -1112,7 +1213,7 @@ def get_profile(user_id:int):
 
 @app.get("/profile-full/{user_id}")
 def profile_full(user_id:int):
-    cursor.execute("SELECT * FROM users WHERE id=?", (user_id,))
+    cursor.execute("SELECT * FROM users WHERE id=? AND COALESCE(is_deleted,0)=0", (user_id,))
     user = cursor.fetchone()
     if user is None:
         return {"status":False,"message":"Profile not found"}
@@ -1154,7 +1255,7 @@ def user_profile_alias(user_id: int):
 
 @app.post("/upload-profile-photos/{user_id}")
 def upload_profile_photos(user_id:int, photos:list[UploadFile]=File(...)):
-    cursor.execute("SELECT id,photo FROM users WHERE id=?", (user_id,))
+    cursor.execute("SELECT id,photo FROM users WHERE id=? AND COALESCE(is_deleted,0)=0", (user_id,))
     user = cursor.fetchone()
     if user is None:
         return {"status":False,"message":"User not found"}
@@ -1176,10 +1277,13 @@ def upload_profile_photos(user_id:int, photos:list[UploadFile]=File(...)):
             if len(content) > 8*1024*1024:
                 continue
             filename=f"{uuid.uuid4().hex}{ext}"
-            filepath=os.path.join(PROFILE_UPLOADS_DIR,filename)
-            with open(filepath,"wb") as f:
-                f.write(content)
-            url=f"/uploads/profile/{filename}"
+            content_type=getattr(upload, "content_type", None) or "image/jpeg"
+            url=store_uploaded_bytes(content, "profile", filename, content_type)
+            if not url:
+                filepath=os.path.join(PROFILE_UPLOADS_DIR,filename)
+                with open(filepath,"wb") as f:
+                    f.write(content)
+                url=f"/uploads/profile/{filename}"
             cursor.execute("SELECT COUNT(*) FROM profile_photos WHERE user_id=?",(user_id,))
             has_any = cursor.fetchone()[0] > 0
             is_main = 0 if has_any else 1
@@ -1206,8 +1310,10 @@ def upload_profile_photos(user_id:int, photos:list[UploadFile]=File(...)):
 
 @app.post("/delete-profile-photo/{user_id}")
 def delete_profile_photo(user_id:int, data:dict):
+    if not ensure_active_user(user_id):
+        return {"status":False,"message":"This profile has been disabled by admin."}
     photo_id=int(data.get("photo_id",0))
-    cursor.execute("SELECT * FROM profile_photos WHERE id=? AND user_id=?",(photo_id,user_id))
+    cursor.execute("SELECT * FROM profile_photos WHERE id=? AND user_id=? AND EXISTS(SELECT 1 FROM users WHERE id=? AND COALESCE(is_deleted,0)=0)",(photo_id,user_id,user_id))
     row=cursor.fetchone()
     if row is None:
         return {"status":False,"message":"Photo not found"}
@@ -1216,11 +1322,7 @@ def delete_profile_photo(user_id:int, data:dict):
     old_url=row["photo"]
     cursor.execute("DELETE FROM profile_photos WHERE id=?",(photo_id,))
 
-    try:
-        path=os.path.join(BASE_DIR, old_url.lstrip("/").replace("/","/"))
-        if os.path.isfile(path): os.remove(path)
-    except Exception:
-        pass
+    delete_stored_media(old_url, PROFILE_UPLOADS_DIR)
 
     cursor.execute("SELECT id,photo FROM profile_photos WHERE user_id=? ORDER BY is_main DESC,id ASC LIMIT 1",(user_id,))
     replacement=cursor.fetchone()
@@ -1239,6 +1341,8 @@ def delete_profile_photo(user_id:int, data:dict):
 
 @app.post("/set-main-photo/{user_id}")
 def set_main_photo(user_id:int, data:dict):
+    if not ensure_active_user(user_id):
+        return {"status":False,"message":"This profile has been disabled by admin."}
     photo_id=int(data.get("photo_id",0))
     cursor.execute("SELECT id,photo FROM profile_photos WHERE id=? AND user_id=?",(photo_id,user_id))
     row=cursor.fetchone()
@@ -1312,6 +1416,9 @@ def upload_profile_photo(
 @app.post("/update-profile")
 
 def update_profile(user:UpdateProfileModel):
+
+    if not ensure_active_user(user.user_id):
+        return {"status":False,"message":"This profile has been disabled by admin."}
 
     cursor.execute(
 
@@ -1407,6 +1514,9 @@ def update_profile(user:UpdateProfileModel):
 @app.post("/change-password")
 
 def change_password(data:ChangePasswordModel):
+
+    if not ensure_active_user(data.user_id):
+        return {"status":False,"message":"This profile has been disabled by admin."}
 
     cursor.execute(
 
@@ -1506,7 +1616,7 @@ def search_users(data: SearchModel):
 
     FROM users
 
-    WHERE id != ?
+    WHERE id != ? AND COALESCE(is_deleted,0)=0
 
     """
 
@@ -1547,6 +1657,7 @@ def search_users(data: SearchModel):
     cursor.execute(query, tuple(params))
 
     users = cursor.fetchall()
+    users = [row for row in users if not users_blocked(data.user_id, row["id"])]
 
     return {
 
@@ -1573,6 +1684,10 @@ def send_interest(data: InterestModel):
             "message": "Invalid User"
 
         }
+
+    available, reason = ensure_pair_available(data.sender_id, data.receiver_id)
+    if not available:
+        return {"status":False,"message":reason}
 
     cursor.execute(
 
@@ -1699,6 +1814,8 @@ def interest_action(data: InterestActionModel):
 
 def received_interests(user_id:int):
 
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","interests":[]}
+
     cursor.execute(
 
         """
@@ -1765,6 +1882,8 @@ def received_interests(user_id:int):
 @app.get("/sent-interests/{user_id}")
 def sent_interests(user_id:int):
 
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","interests":[]}
+
     cursor.execute(
 
         """
@@ -1826,6 +1945,10 @@ def send_message(data: MessageModel):
             "message":"Invalid User"
 
         }
+
+    available, reason = ensure_pair_available(data.sender_id, data.receiver_id)
+    if not available:
+        return {"status":False,"message":reason,"blocked":True}
 
     cursor.execute(
 
@@ -1892,6 +2015,10 @@ def upload_chat_photo(sender_id:int, receiver_id:int, photo:UploadFile=File(...)
     if sender_id == receiver_id:
         return {"status":False,"message":"Invalid User"}
 
+    available, reason = ensure_pair_available(sender_id, receiver_id)
+    if not available:
+        return {"status":False,"message":reason,"blocked":True}
+
     allowed={".jpg",".jpeg",".png",".webp",".gif"}
     ext=os.path.splitext(photo.filename or "")[1].lower()
     if ext not in allowed:
@@ -1900,10 +2027,15 @@ def upload_chat_photo(sender_id:int, receiver_id:int, photo:UploadFile=File(...)
     filename=f"{uuid.uuid4().hex}{ext}"
     path=os.path.join(CHAT_UPLOADS_DIR,filename)
     try:
-        with open(path,"wb") as f:
-            f.write(photo.file.read())
-
-        url=f"/uploads/chat/{filename}"
+        content=photo.file.read()
+        if len(content)>8*1024*1024:
+            return {"status":False,"message":"Photo must be below 8 MB."}
+        content_type=getattr(photo,"content_type",None) or "image/jpeg"
+        url=store_uploaded_bytes(content,"chat",filename,content_type)
+        if not url:
+            with open(path,"wb") as f:
+                f.write(content)
+            url=f"/uploads/chat/{filename}"
         cursor.execute("""
             INSERT INTO messages(sender_id,receiver_id,message,media_url,media_type)
             VALUES(?,?,?,?,?)
@@ -1923,6 +2055,8 @@ def upload_chat_photo(sender_id:int, receiver_id:int, photo:UploadFile=File(...)
 
 @app.delete("/delete-message/{message_id}")
 def delete_message(message_id:int, user_id:int):
+    if not ensure_active_user(user_id):
+        return {"status":False,"message":"This profile has been disabled by admin."}
     cursor.execute("SELECT * FROM messages WHERE id=?",(message_id,))
     row=cursor.fetchone()
     if row is None:
@@ -1951,6 +2085,10 @@ def delete_message(message_id:int, user_id:int):
 @app.get("/chat/{sender_id}/{receiver_id}")
 
 def get_chat(sender_id:int,receiver_id:int):
+
+    available, reason = ensure_pair_available(sender_id, receiver_id)
+    if not available:
+        return {"status":True,"blocked":True,"message":reason,"messages":[]}
 
     cursor.execute(
 
@@ -1987,6 +2125,7 @@ def get_chat(sender_id:int,receiver_id:int):
     return{
 
         "status":True,
+        "blocked":False,
 
         "messages":[dict(row) for row in chats]
 
@@ -1999,6 +2138,7 @@ def get_chat(sender_id:int,receiver_id:int):
 
 @app.get("/conversations/{user_id}")
 def conversations(user_id:int):
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","conversations":[]}
     cursor.execute("""
         SELECT DISTINCT
             u.id, u.name, u.photo, u.city
@@ -2009,9 +2149,15 @@ def conversations(user_id:int):
             FROM messages
             WHERE sender_id=? OR receiver_id=?
         ) p ON p.partner_id=u.id
+        WHERE COALESCE(u.is_deleted,0)=0
+          AND NOT EXISTS (
+              SELECT 1 FROM blocks b
+              WHERE (b.user_id=? AND b.blocked_user=u.id)
+                 OR (b.user_id=u.id AND b.blocked_user=?)
+          )
         ORDER BY u.id DESC
         LIMIT 50
-    """,(user_id,user_id,user_id))
+    """,(user_id,user_id,user_id,user_id,user_id))
     users=[dict(r) for r in cursor.fetchall()]
     return {
         "status":True,
@@ -2027,6 +2173,8 @@ def conversations(user_id:int):
 @app.get("/unread-count/{user_id}")
 
 def unread_count(user_id:int):
+
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","unread":0}
 
     cursor.execute(
 
@@ -2067,6 +2215,11 @@ def unread_count(user_id:int):
 @app.post("/favorite")
 
 def add_favorite(data: InterestModel):
+
+    if not ensure_active_user(data.sender_id) or not ensure_active_user(data.receiver_id):
+        return {"status":False,"message":"Profile unavailable."}
+    if users_blocked(data.sender_id,data.receiver_id):
+        return {"status":False,"message":"This user is blocked."}
 
     cursor.execute(
 
@@ -2150,6 +2303,9 @@ def add_favorite(data: InterestModel):
 
 def remove_favorite(data:InterestModel):
 
+    if not ensure_active_user(data.sender_id) or not ensure_active_user(data.receiver_id):
+        return {"status":False,"message":"Profile unavailable."}
+
     cursor.execute(
 
         """
@@ -2189,6 +2345,8 @@ def remove_favorite(data:InterestModel):
 @app.get("/favorites/{user_id}")
 
 def my_favorites(user_id:int):
+
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","favorites":[]}
 
     cursor.execute(
 
@@ -2321,6 +2479,11 @@ def profile_view(data: InterestModel):
 @app.post("/block-user")
 def block_user(data: InterestModel):
 
+    if data.sender_id == data.receiver_id:
+        return {"status":False,"message":"Invalid User"}
+    if not ensure_active_user(data.sender_id) or not ensure_active_user(data.receiver_id):
+        return {"status":False,"message":"This account is unavailable."}
+
     cursor.execute(
 
         """
@@ -2405,6 +2568,11 @@ def block_user(data: InterestModel):
 
 @app.post("/report-user")
 def report_user(data: InterestModel):
+
+    if data.sender_id == data.receiver_id:
+        return {"status":False,"message":"Invalid User"}
+    if not ensure_active_user(data.sender_id) or not ensure_active_user(data.receiver_id):
+        return {"status":False,"message":"This account is unavailable."}
 
     cursor.execute(
 
@@ -2541,6 +2709,8 @@ def admin_reports():
 
 def my_notifications(user_id: int):
 
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","notifications":[]}
+
     cursor.execute(
 
         """
@@ -2645,6 +2815,8 @@ def buy_premium(data: PremiumModel):
 @app.get("/premium-status/{user_id}")
 
 def premium_status(user_id:int):
+
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin."}
 
     cursor.execute(
 
@@ -2764,7 +2936,7 @@ def admin_login(data:AdminLoginModel):
 
 def admin_dashboard():
 
-    cursor.execute("SELECT COUNT(*) FROM users")
+    cursor.execute("SELECT COUNT(*) FROM users WHERE COALESCE(is_deleted,0)=0")
     total_users=cursor.fetchone()[0]
 
     cursor.execute("SELECT COUNT(*) FROM interests")
@@ -2810,11 +2982,16 @@ def admin_users():
         mobile,
         gender,
         city,
+        photo,
         is_verified,
         is_premium,
-        created_at
+        created_at,
+        is_deleted,
+        deleted_at
 
         FROM users
+
+        WHERE COALESCE(is_deleted,0)=0
 
         ORDER BY id DESC
 
@@ -2845,7 +3022,9 @@ def admin_blocked_users():
     u1.name,
     u2.name,
     blocks.reason,
-    blocks.created_at
+    blocks.created_at,
+    COALESCE(u1.is_deleted,0),
+    COALESCE(u2.is_deleted,0)
 
     FROM blocks
 
@@ -2871,7 +3050,9 @@ def admin_blocked_users():
             "user": row[1],
             "blocked": row[2],
             "reason": row[3] if row[3] else "-",
-            "date": row[4]
+            "date": row[4],
+            "user_deleted": bool(row[5]),
+            "blocked_deleted": bool(row[6])
 
         })
 
@@ -3003,87 +3184,53 @@ def send_notification(data: NotificationModel):
 # =====================================================
 
 @app.delete("/admin/delete-user/{user_id}")
-
 def delete_user(user_id:int):
+    cursor.execute("SELECT * FROM users WHERE id=?", (user_id,))
+    user=cursor.fetchone()
+    if user is None:
+        return {"status":False,"message":"User not found"}
 
-    cursor.execute(
-        "DELETE FROM interests WHERE sender_id=? OR receiver_id=?",
-        (
-            user_id,
-            user_id
-        )
-    )
+    mobile=user["mobile"]
+    # Mark the account disabled first so an already-open app cannot keep using it.
+    cursor.execute("UPDATE users SET is_deleted=1, deleted_at=CURRENT_TIMESTAMP WHERE id=?", (user_id,))
 
-    cursor.execute(
-        "DELETE FROM messages WHERE sender_id=? OR receiver_id=?",
-        (
-            user_id,
-            user_id
-        )
-    )
+    # Remove relationships/content tied to the disabled profile.
+    for sql,args in [
+        ("DELETE FROM interests WHERE sender_id=? OR receiver_id=?", (user_id,user_id)),
+        ("DELETE FROM favorites WHERE user_id=? OR favorite_user=?", (user_id,user_id)),
+        ("DELETE FROM notifications WHERE user_id=?", (user_id,)),
+        ("DELETE FROM profile_views WHERE viewer_id=? OR profile_id=?", (user_id,user_id)),
+        ("DELETE FROM blocks WHERE user_id=? OR blocked_user=?", (user_id,user_id)),
+        ("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (user_id,user_id)),
+        ("DELETE FROM premium WHERE user_id=?", (user_id,)),
+    ]:
+        cursor.execute(sql,args)
 
-    cursor.execute(
-        "DELETE FROM favorites WHERE user_id=? OR favorite_user=?",
-        (
-            user_id,
-            user_id
-        )
-    )
+    # Delete uploaded media belonging to this profile/chat before removing message rows.
+    cursor.execute("SELECT media_url FROM messages WHERE sender_id=? OR receiver_id=?", (user_id,user_id))
+    for row in cursor.fetchall():
+        delete_stored_media(row["media_url"], CHAT_UPLOADS_DIR)
+    cursor.execute("SELECT photo FROM profile_photos WHERE user_id=?", (user_id,))
+    for row in cursor.fetchall():
+        delete_stored_media(row["photo"], PROFILE_UPLOADS_DIR)
+    if user["photo"]:
+        delete_stored_media(user["photo"], PROFILE_UPLOADS_DIR)
 
-    cursor.execute(
-        "DELETE FROM notifications WHERE user_id=?",
-        (
-            user_id,
-        )
-    )
-
-    cursor.execute(
-        "DELETE FROM profile_views WHERE viewer_id=? OR profile_id=?",
-        (
-            user_id,
-            user_id
-        )
-    )
-
-    cursor.execute(
-        "DELETE FROM blocks WHERE user_id=? OR blocked_user=?",
-        (
-            user_id,
-            user_id
-        )
-    )
-
-    cursor.execute(
-        "DELETE FROM reports WHERE reporter_id=? OR reported_id=?",
-        (
-            user_id,
-            user_id
-        )
-    )
-
-    cursor.execute(
-        "DELETE FROM premium WHERE user_id=?",
-        (
-            user_id,
-        )
-    )
-
-    cursor.execute(
-        "DELETE FROM users WHERE id=?",
-        (
-            user_id,
-        )
-    )
-
+    cursor.execute("DELETE FROM messages WHERE sender_id=? OR receiver_id=?", (user_id,user_id))
+    cursor.execute("DELETE FROM profile_photos WHERE user_id=?", (user_id,))
+    # Keep the disabled user row as an audit/cloud record; it is invisible to the app.
+    cursor.execute("UPDATE users SET photo='' WHERE id=?", (user_id,))
     conn.commit()
 
-    return{
+    if FIREBASE_ENABLED:
+        try:
+            fuser=firebase_auth.get_user_by_email(firebase_email_for_mobile(mobile))
+            firebase_auth.update_user(fuser.uid, disabled=True)
+        except Exception as e:
+            print("Firebase disable warning:", e)
+        firebase_sync_async()
 
-        "status":True,
-
-        "message":"User Deleted Successfully"
-
-    }
+    return {"status":True,"message":"User permanently disabled and removed from the active app."}
 
 
 # =====================================================
@@ -3199,6 +3346,8 @@ def respond_interest(data:dict):
 
 def my_matches(user_id:int):
 
+    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","matches":[]}
+
     cursor.execute(
 
         """
@@ -3305,6 +3454,7 @@ def firebase_status():
         "status": True,
         "firebase_enabled": FIREBASE_ENABLED,
         "firestore": bool(firebase_db),
+        "storage": bool(firebase_bucket) if FIREBASE_ENABLED else False,
         "message": "Real Firebase connected" if FIREBASE_ENABLED else "Firebase service account is not configured"
     }
 
