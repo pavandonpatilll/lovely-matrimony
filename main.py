@@ -50,7 +50,7 @@ app.add_middleware(
 @app.middleware("http")
 async def firebase_mirror_middleware(request, call_next):
     response = await call_next(request)
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path not in {"/presence", "/typing"}:
         firebase_sync_async()
     return response
 
@@ -529,6 +529,18 @@ CREATE TABLE IF NOT EXISTS message_reactions(
 """)
 conn.commit()
 
+# Lightweight real-time presence/typing state.
+# last_seen is Unix seconds; online window is intentionally short.
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_presence(
+    user_id INTEGER PRIMARY KEY,
+    last_seen REAL NOT NULL DEFAULT 0,
+    typing_to INTEGER,
+    typing_until REAL DEFAULT 0
+)
+""")
+conn.commit()
+
 # =====================================================
 # NOTIFICATIONS TABLE
 # =====================================================
@@ -851,6 +863,14 @@ class MessageReactionModel(BaseModel):
     message_id: int
     user_id: int
     reaction: str
+
+class PresenceModel(BaseModel):
+    user_id: int
+
+class TypingModel(BaseModel):
+    user_id: int
+    receiver_id: int
+    typing: bool = True
 
 
 class PremiumModel(BaseModel):
@@ -1960,6 +1980,67 @@ def sent_interests(user_id:int):
     }
 
 # =====================================================
+# REAL-TIME PRESENCE / TYPING
+# =====================================================
+
+ONLINE_WINDOW_SECONDS = 25.0
+TYPING_WINDOW_SECONDS = 3.0
+
+
+def _presence_row(user_id: int):
+    cursor.execute("SELECT user_id,last_seen,typing_to,typing_until FROM user_presence WHERE user_id=?", (user_id,))
+    return cursor.fetchone()
+
+
+@app.post("/presence")
+def presence(data: PresenceModel):
+    if not ensure_active_user(data.user_id):
+        return {"status": False, "message": "This profile has been disabled by admin.", "active": False}
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    cursor.execute("""
+        INSERT INTO user_presence(user_id,last_seen,typing_to,typing_until)
+        VALUES(?,?,NULL,0)
+        ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen
+    """, (data.user_id, now))
+    conn.commit()
+    return {"status": True, "online": True, "now": now}
+
+
+@app.post("/typing")
+def typing(data: TypingModel):
+    if not ensure_active_user(data.user_id):
+        return {"status": False, "message": "This profile has been disabled by admin.", "active": False}
+    if data.user_id == data.receiver_id:
+        return {"status": False, "message": "Invalid receiver."}
+    available, reason = ensure_pair_available(data.user_id, data.receiver_id)
+    if not available:
+        return {"status": False, "blocked": True, "message": reason}
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    typing_until = now + TYPING_WINDOW_SECONDS if data.typing else 0
+    cursor.execute("""
+        INSERT INTO user_presence(user_id,last_seen,typing_to,typing_until)
+        VALUES(?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen,
+            typing_to=excluded.typing_to, typing_until=excluded.typing_until
+    """, (data.user_id, now, data.receiver_id if data.typing else None, typing_until))
+    conn.commit()
+    return {"status": True, "typing": bool(data.typing), "typing_until": typing_until}
+
+
+@app.get("/presence/{user_id}/{other_id}")
+def get_presence(user_id: int, other_id: int):
+    if not ensure_active_user(user_id) or not ensure_active_user(other_id):
+        return {"status": False, "active": False}
+    available, reason = ensure_pair_available(user_id, other_id)
+    if not available:
+        return {"status": True, "blocked": True, "message": reason, "online": False, "typing": False}
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    row = _presence_row(other_id)
+    online = bool(row and (now - float(row["last_seen"] or 0)) <= ONLINE_WINDOW_SECONDS)
+    typing_now = bool(row and online and int(row["typing_to"] or 0) == int(user_id) and float(row["typing_until"] or 0) > now)
+    return {"status": True, "blocked": False, "online": online, "typing": typing_now, "last_seen": row["last_seen"] if row else None}
+
+# =====================================================
 # SEND MESSAGE
 # =====================================================
 
@@ -2098,7 +2179,13 @@ def delete_message(message_id:int, user_id:int):
 def get_chat(sender_id:int,receiver_id:int):
     available, reason = ensure_pair_available(sender_id,receiver_id)
     if not available:
-        return {"status":True,"blocked":True,"message":reason,"messages":[]}
+        return {"status":True,"blocked":True,"message":reason,"messages":[],"partner_online":False,"partner_typing":False}
+    # Opening/refreshing this chat means all received messages currently visible are seen.
+    cursor.execute("""
+        UPDATE messages SET is_read=1
+        WHERE sender_id=? AND receiver_id=? AND is_read=0
+    """, (receiver_id, sender_id))
+    conn.commit()
     cursor.execute("""
         SELECT * FROM (
             SELECT * FROM messages
@@ -2120,7 +2207,11 @@ def get_chat(sender_id:int,receiver_id:int):
         original=by_id.get(int(rid)) if rid else None
         x["reply_to"]={"id":original["id"],"sender_id":original["sender_id"],"message":original["message"],"media_url":original.get("media_url")} if original else None
         x["reactions"]=reactions_by.get(int(x["id"]),[])
-    return {"status":True,"blocked":False,"messages":chats}
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    prow = _presence_row(receiver_id)
+    partner_online = bool(prow and (now - float(prow["last_seen"] or 0)) <= ONLINE_WINDOW_SECONDS)
+    partner_typing = bool(prow and partner_online and int(prow["typing_to"] or 0) == int(sender_id) and float(prow["typing_until"] or 0) > now)
+    return {"status":True,"blocked":False,"messages":chats,"partner_online":partner_online,"partner_typing":partner_typing}
 
 
 # =====================================================
