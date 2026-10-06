@@ -31,7 +31,7 @@ app = FastAPI(
 )
 
 # =====================================================
-# CORS
+# CORS + DATABASE SERIALIZATION
 # =====================================================
 
 app.add_middleware(
@@ -41,6 +41,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# The app uses one shared SQLite connection/cursor for the existing codebase.
+# Presence/typing/chat requests can arrive at the same time, especially from
+# mobile/WebView clients, so serialize DB-backed HTTP requests to prevent
+# intermittent "database locked" / "recursive cursor" send failures.
+DB_LOCK = threading.RLock()
+
+@app.middleware("http")
+async def database_serialization_middleware(request, call_next):
+    # Static uploads do not touch the shared SQLite cursor.
+    if request.url.path.startswith("/uploads/"):
+        return await call_next(request)
+    with DB_LOCK:
+        return await call_next(request)
 
 # =====================================================
 # FIREBASE AUTO MIRROR FOR ALL WRITE ACTIONS
@@ -172,49 +186,49 @@ def firebase_sync_all():
     if not FIREBASE_ENABLED:
         return
 
-    try:
-        db = sqlite3.connect(DB_PATH)
-        db.row_factory = sqlite3.Row
-        c = db.cursor()
+    # Keep the cloud mirror out of the shared SQLite connection/cursor.
+    # It still uses the same process-level DB lock so the mirror cannot race
+    # with a live send/presence/typing write.
+    with DB_LOCK:
+        try:
+            db = sqlite3.connect(DB_PATH, timeout=30.0)
+            db.row_factory = sqlite3.Row
+            db.execute("PRAGMA busy_timeout=30000")
+            c = db.cursor()
 
-        c.execute("""
-            SELECT name FROM sqlite_master
-            WHERE type='table' AND name NOT LIKE 'sqlite_%'
-            ORDER BY CASE name
-                WHEN 'users' THEN 1
-                WHEN 'admin' THEN 2
-                ELSE 3
-            END, name
-        """)
-        tables = [r[0] for r in c.fetchall()]
+            c.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name NOT LIKE 'sqlite_%'
+                ORDER BY CASE name
+                    WHEN 'users' THEN 1
+                    WHEN 'admin' THEN 2
+                    ELSE 3
+                END, name
+            """)
+            tables = [r[0] for r in c.fetchall()]
 
-        for table in tables:
-            c.execute(f"PRAGMA table_info({table})")
-            cols = [r[1] for r in c.fetchall()]
-            c.execute(f"SELECT * FROM {table}")
-            rows = c.fetchall()
-            collection = db_firestore_collection = firebase_db.collection(
-                f"premmilan_{table}"
-            )
+            for table in tables:
+                c.execute(f"PRAGMA table_info({table})")
+                cols = [r[1] for r in c.fetchall()]
+                c.execute(f"SELECT * FROM {table}")
+                rows = c.fetchall()
+                collection = firebase_db.collection(f"premmilan_{table}")
 
-            existing = set()
-            for row in rows:
-                data = dict(row)
-                doc_id = str(data.get("id", uuid.uuid4()))
-                # Firestore gets the hash, not the plaintext password.
-                collection.document(doc_id).set(data, merge=True)
-                existing.add(doc_id)
+                existing = set()
+                for row in rows:
+                    data = dict(row)
+                    doc_id = str(data.get("id", uuid.uuid4()))
+                    collection.document(doc_id).set(data, merge=True)
+                    existing.add(doc_id)
 
-            # Remove stale mirror documents.
-            for doc in collection.stream():
-                if doc.id not in existing:
-                    collection.document(doc.id).delete()
+                for doc in collection.stream():
+                    if doc.id not in existing:
+                        collection.document(doc.id).delete()
 
-        db.close()
-        print("Firebase mirror sync: OK")
-    except Exception as e:
-        print("Firebase mirror sync warning:", e)
-
+            db.close()
+            print("Firebase mirror sync: OK")
+        except Exception as e:
+            print("Firebase mirror sync warning:", e)
 _firebase_sync_lock = threading.Lock()
 _firebase_sync_pending = False
 
@@ -326,8 +340,14 @@ DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 conn = sqlite3.connect(
     DB_PATH,
-    check_same_thread=False
+    check_same_thread=False,
+    timeout=30.0
 )
+
+# Better concurrent-read/write behavior for Render + WebView chat traffic.
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA synchronous=NORMAL")
+conn.execute("PRAGMA busy_timeout=30000")
 
 conn.row_factory = sqlite3.Row
 

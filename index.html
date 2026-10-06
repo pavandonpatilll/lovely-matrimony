@@ -662,14 +662,15 @@ button,input,select,textarea{font:inherit;max-width:100%;}
 <body>
 <script>
 window.PM_API="https://lovely-matrimony-q4vn.onrender.com";
-window.pmApiFetch=async function(path,options={},retries=1){
+window.__pmNativeFetch=window.fetch.bind(window);
+window.pmApiFetch=async function(path,options={},retries=1,timeoutMs=7000){
   const base=window.PM_API||"";
   let lastError=null;
   for(let attempt=0;attempt<=retries;attempt++){
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),12000);
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
-      const response=await fetch(base+path,{...options,signal:controller.signal});
+      const response=await window.__pmNativeFetch(base+path,{...options,signal:controller.signal});
       clearTimeout(timer);
       const text=await response.text();
       let data={};
@@ -684,6 +685,10 @@ window.pmApiFetch=async function(path,options={},retries=1){
   }
   throw lastError||new Error("Unable to connect");
 };
+window.pmWakeServer=function(){
+  try{ window.__pmNativeFetch((window.PM_API||"")+"/",{cache:"no-store",keepalive:true}).catch(()=>{}); }catch(e){}
+};
+window.pmWakeServer();
 </script>
 <script>
 // Network hardening: retry Render API requests once on transient network/5xx failures.
@@ -2433,7 +2438,7 @@ async function sendChat(){
   input.value="";cancelChatReply();sendTypingState(false);pulsePresence();
   try{
     const body={sender_id:senderId,receiver_id:Number(currentReceiver),message:message,reply_to_id:replyId};
-    const result=await window.pmApiFetch("/send-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},0);
+    const result=await window.pmApiFetch("/send-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},1,20000);
     if(result.status){
       loadChat(true);
     }else{
