@@ -616,6 +616,23 @@ button,input,select,textarea{font:inherit;max-width:100%;}
 @media(min-width:1000px){.homeContent{padding-left:20px;padding-right:20px}.bottomNav{max-width:900px;margin:auto;left:0;right:0;border-radius:20px 20px 0 0;}}
 @media(orientation:landscape) and (max-height:600px){#chatMessages{height:55dvh!important}.homeContent{padding-bottom:75px}.pmHero img{height:70vh}}
 </style>
+<style>
+/* WhatsApp-style chat enhancements */
+.pmReplyBar{display:none;background:#fff0f4;border-left:4px solid #ff4d6d;padding:9px 12px;border-radius:12px;margin:0 0 8px;align-items:center;gap:10px;}
+.pmReplyBar.show{display:flex;}
+.pmReplyBar .pmReplyText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#555;font-size:13px;}
+.pmMsg{position:relative;max-width:min(82%,390px);padding:9px 10px;border-radius:17px;box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.pmMsg.mine{background:#ff4d6d;color:#fff;border-bottom-right-radius:5px;}
+.pmMsg.other{background:#fff;color:#222;border-bottom-left-radius:5px;}
+.pmReplyQuote{background:rgba(0,0,0,.08);border-left:3px solid currentColor;padding:6px 8px;border-radius:8px;margin-bottom:6px;font-size:12px;opacity:.9;}
+.pmActionRow{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px;}
+.pmActionRow button{border:0;background:rgba(255,255,255,.82);border-radius:10px;padding:3px 7px;font-size:14px;cursor:pointer;}
+.pmReactions{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;}
+.pmReactionChip{background:#fff;border:1px solid #eee;border-radius:12px;padding:2px 6px;font-size:12px;color:#222;}
+.pmMsgImg{display:block;width:auto;max-width:100%;max-height:min(58dvh,460px);height:auto;object-fit:contain;border-radius:12px;background:#f5f5f5;cursor:pointer;}
+#chatMessages{scroll-behavior:smooth;}
+@media(max-width:700px){.pmMsg{max-width:88%;}.pmMsgImg{max-height:52dvh;}}
+</style>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
@@ -1196,6 +1213,12 @@ border-radius:10px;
 margin:15px 0;
 ">
 
+</div>
+
+<div id="chatReplyBar" class="pmReplyBar">
+  <div style="font-size:18px">↩️</div>
+  <div class="pmReplyText" id="chatReplyText"></div>
+  <button type="button" onclick="cancelChatReply()" style="border:0;background:transparent;font-size:20px;cursor:pointer;">✕</button>
 </div>
 
 <div style="display:flex;gap:8px;align-items:center;">
@@ -2071,120 +2094,144 @@ menu.style.display="none";
 });
 
 async function openChat(receiverId,name){
-
-currentReceiver = receiverId;
-
-currentReceiverName = name;
-
-// Chat page open
+currentReceiver=Number(receiverId);
+currentReceiverName=String(name||"User");
 showSection("chat");
-
-// Chat list hide
-document.getElementById("conversationList").style.display = "none";
-
-// Chat box show
-document.getElementById("chatBox").style.display = "block";
-
-// Receiver name
-document.getElementById("chatUserName").innerHTML = "💬 " + name;
-
-// Purana timer band
-if(chatInterval){
-    clearInterval(chatInterval);
-}
-
-// Pehli baar messages load
+document.getElementById("conversationList").style.display="none";
+document.getElementById("chatBox").style.display="block";
+document.getElementById("chatUserName").textContent="💬 "+currentReceiverName;
+cancelChatReply();
+if(chatInterval)clearInterval(chatInterval);
 loadChat();
-
-// Auto refresh
-chatInterval = setInterval(loadChat,3000);
-
+chatInterval=setInterval(()=>{ if(document.visibilityState!=="hidden" && currentReceiver) loadChat(true); },5000);
 }
-
 
 function closeChat(){
-
 document.getElementById("chatBox").style.display="none";
-
 document.getElementById("conversationList").style.display="block";
-
-if(chatInterval){
-
-clearInterval(chatInterval);
-
-chatInterval = null;
-
-}
-
+if(chatInterval){clearInterval(chatInterval);chatInterval=null;}
+cancelChatReply();
 }
 
 function setChatAvailability(blocked){
-  const input=document.getElementById("chatInput");
-  const send=document.querySelector('#chatBox button[onclick="sendChat()"]');
-  const photo=document.getElementById("chatPhotoInput");
-  if(input)input.disabled=!!blocked;
-  if(send)send.disabled=!!blocked;
-  if(photo)photo.disabled=!!blocked;
+const input=document.getElementById("chatInput");
+const send=document.querySelector('#chatBox button[onclick="sendChat()"]');
+const photo=document.getElementById("chatPhotoInput");
+if(input)input.disabled=!!blocked;
+if(send)send.disabled=!!blocked;
+if(photo)photo.disabled=!!blocked;
 }
 
-async function loadChat(){
+let pendingReplyId=null;
+let pendingReplyText="";
+function startChatReply(id,text){
+ pendingReplyId=Number(id); pendingReplyText=String(text||"");
+ const bar=document.getElementById("chatReplyBar"), box=document.getElementById("chatReplyText");
+ if(box)box.textContent=pendingReplyText||"Photo";
+ if(bar)bar.classList.add("show");
+ const input=document.getElementById("chatInput"); if(input)input.focus();
+}
+function cancelChatReply(){
+ pendingReplyId=null; pendingReplyText="";
+ const bar=document.getElementById("chatReplyBar"); if(bar)bar.classList.remove("show");
+}
+
+async function reactToMessage(id,reaction){
+ const uid=parseInt(localStorage.getItem("userId")||"0");
+ if(!uid)return;
+ try{
+   const d=await window.pmApiFetch("/message-reaction",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message_id:Number(id),user_id:uid,reaction})},0);
+   if(d.blocked){alert(d.message||"Chat blocked");return;}
+   if(d.status)loadChat(true);
+ }catch(e){console.log("reaction",e);}
+}
+
+async function loadChat(silent=false){
 const senderId=parseInt(localStorage.getItem("userId")||"0");
 if(!senderId||!currentReceiver)return;
 try{
-const response=await fetch(PM_API+"/chat/"+senderId+"/"+currentReceiver,{cache:"no-store"});
-const result=await response.json();
-if(result.blocked){
-  document.getElementById("chatMessages").innerHTML='<div style="text-align:center;color:#b00020;padding:35px 15px;font-weight:700;">🚫 Chat is blocked between you and this user.</div>';
-  setChatAvailability(true);
-  return;
-}
-if(!result.status)return;
-setChatAvailability(false);
-let html="";
-(result.messages||[]).forEach(msg=>{
-const mine=Number(msg.sender_id)===senderId;
-const media=msg.media_url?pmUrl(msg.media_url):"";
-html+=`<div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:9px 0;">
-<div style="max-width:min(78%,360px);position:relative;padding:9px 11px;border-radius:17px;background:${mine?'#ff4d6d':'#eeeeee'};color:${mine?'white':'black'};overflow:hidden;">
-${media?`<img src="${media}" loading="lazy" alt="Photo" onclick="window.open('${media}','_blank')" style="display:block;width:100%;max-width:320px;height:auto;max-height:360px;object-fit:contain;object-position:center;background:#111;border-radius:12px;cursor:pointer;">`:''}
-${msg.message&&msg.message!=="[Photo]"?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;">${escapeHtml(msg.message)}</div>`:''}
-${mine?`<button onclick="deleteChatMessage(${msg.id})" title="Delete" style="position:absolute;right:5px;top:5px;border:0;background:rgba(255,255,255,.9);border-radius:50%;width:28px;height:28px;cursor:pointer;">🗑</button>`:''}
-</div></div>`;
-});
-document.getElementById("chatMessages").innerHTML=html||'<div style="text-align:center;color:#888;padding:30px">No messages yet ❤️</div>';
-const box=document.getElementById("chatMessages");box.scrollTop=box.scrollHeight;
-}catch(error){console.log("chat load",error);}
+ const result=await window.pmApiFetch("/chat/"+senderId+"/"+currentReceiver,{cache:"no-store"},0);
+ if(result.blocked){
+   document.getElementById("chatMessages").innerHTML='<div style="text-align:center;color:#b00020;padding:35px 15px;font-weight:700;">🚫 Chat is blocked between you and this user.</div>';
+   setChatAvailability(true); return;
+ }
+ if(!result.status)return;
+ setChatAvailability(false);
+ const box=document.getElementById("chatMessages");
+ const atBottom=(box.scrollHeight-box.scrollTop-box.clientHeight)<90;
+ let html="";
+ (result.messages||[]).forEach(msg=>{
+   const mine=Number(msg.sender_id)===senderId;
+   const media=msg.media_url?pmUrl(msg.media_url):"";
+   const replied=msg.reply_to;
+   const reactions=msg.reactions||[];
+   const counts={}; reactions.forEach(r=>counts[r.reaction]=(counts[r.reaction]||0)+1);
+   const reactionHtml=Object.entries(counts).map(([r,c])=>`<span class="pmReactionChip">${r} ${c}</span>`).join("");
+   const text=msg.message&&msg.message!=="[Photo]"?escapeHtml(msg.message):"Photo";
+   const replyJs=JSON.stringify(String(msg.message&&msg.message!=="[Photo]"?msg.message:"Photo"));
+   html+=`<div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:7px 0;">
+     <div class="pmMsg ${mine?'mine':'other'}">
+       ${replied?`<div class="pmReplyQuote">↩ ${escapeHtml(replied.message==='[Photo]'?'Photo':replied.message)}</div>`:''}
+       ${media?`<img class="pmMsgImg" src="${media}" loading="lazy" decoding="async" alt="Photo" onclick="window.open('${media}','_blank')">`:''}
+       ${msg.message&&msg.message!=="[Photo]"?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;white-space:pre-wrap;">${text}</div>`:''}
+       ${reactionHtml?`<div class="pmReactions">${reactionHtml}</div>`:''}
+       <div class="pmActionRow">
+         <button onclick="startChatReply(${msg.id},${replyJs})">↩ Reply</button>
+         <button onclick="reactToMessage(${msg.id},'❤️')">❤️</button>
+         <button onclick="reactToMessage(${msg.id},'👍')">👍</button>
+         <button onclick="reactToMessage(${msg.id},'😂')">😂</button>
+         <button onclick="reactToMessage(${msg.id},'😮')">😮</button>
+         ${mine?`<button onclick="deleteChatMessage(${msg.id})">🗑 Delete</button>`:''}
+       </div>
+     </div>
+   </div>`;
+ });
+ const newHtml=html||'<div style="text-align:center;color:#888;padding:30px">No messages yet ❤️</div>';
+ // Avoid rebuilding DOM when nothing changed.
+ const fingerprint=(result.messages||[]).map(m=>m.id+":"+(m.message||"")+":"+(m.reactions||[]).map(r=>r.reaction+r.user_id).join(",")).join("|");
+ if(box.dataset.fingerprint!==fingerprint){box.dataset.fingerprint=fingerprint;box.innerHTML=newHtml;if(atBottom)box.scrollTop=box.scrollHeight;}
+}catch(error){if(!silent)console.log("chat load",error);}
 }
 
 function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
+async function sendChat(){
+if(!(await pmAccountGuard()))return;
+const senderId=parseInt(localStorage.getItem("userId")||"0");
+const input=document.getElementById("chatInput");
+const message=input.value.trim();
+if(message===""||!currentReceiver)return;
+try{
+ const body={sender_id:senderId,receiver_id:Number(currentReceiver),message:message,reply_to_id:pendingReplyId};
+ const result=await window.pmApiFetch("/send-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},1);
+ if(result.status){input.value="";cancelChatReply();loadChat();}else alert(result.message||"Unable to send.");
+}catch(e){console.log(e);alert("Unable to send message.");}
+}
+
 async function sendChatPhoto(input){
 if(!(await pmAccountGuard())){input.value="";return;}
-const file=input.files&&input.files[0];
-if(!file)return;
+const file=input.files&&input.files[0]; if(!file)return;
 if(file.size>8*1024*1024){alert("Photo must be below 8 MB.");input.value="";return;}
 const uid=parseInt(localStorage.getItem("userId")||"0");
 if(!uid||!currentReceiver){alert("Please open a chat first.");input.value="";return;}
 try{
-const fd=new FormData();fd.append("photo",file);
-const r=await fetch(PM_API+"/upload-chat-photo/"+uid+"/"+currentReceiver,{method:"POST",body:fd});
-const d=await r.json();
-if(d.blocked){alert(d.message||"Chat is blocked.");loadChat();return;}
-if(!d.status)alert(d.message||"Unable to send photo.");else loadChat();
+ const fd=new FormData();fd.append("photo",file);
+ const d=await (await fetch(PM_API+"/upload-chat-photo/"+uid+"/"+currentReceiver,{method:"POST",body:fd})).json();
+ if(d.blocked)alert(d.message||"Chat is blocked.");
+ else if(!d.status)alert(d.message||"Unable to send photo.");
+ else loadChat();
 }catch(e){console.log(e);alert("Unable to send photo.");}
 input.value="";
 }
 
 async function deleteChatMessage(id){
-if(!confirm("Delete this message/photo?"))return;
+if(!confirm("Delete this message for everyone?"))return;
 const uid=parseInt(localStorage.getItem("userId")||"0");
 try{
-const r=await fetch(PM_API+"/delete-message/"+id+"?user_id="+uid,{method:"DELETE"});
-const d=await r.json();
-if(!d.status)alert(d.message||"Unable to delete.");else loadChat();
+ const d=await (await fetch(PM_API+"/delete-message/"+id+"?user_id="+uid,{method:"DELETE"})).json();
+ if(!d.status)alert(d.message||"Unable to delete."); else loadChat();
 }catch(e){console.log(e);alert("Unable to delete message.");}
 }
-
 
 
 async function loadMatches(){
@@ -2744,21 +2791,24 @@ document.getElementById("overlay").classList.remove("active");
 
 }
 
-function autoLogin(){
-
+async function autoLogin(){
 const userId=localStorage.getItem("userId");
-if(!userId)return;
+if(!userId){
+  document.querySelector(".card").style.display="block";
+  document.getElementById("home").classList.add("hidden");
+  return false;
+}
 
+// Restore UI immediately so refresh never throws the user back to Register.
 document.querySelector(".card").style.display="none";
 document.getElementById("home").classList.remove("hidden");
 document.getElementById("welcomeName").textContent=
 "Welcome, "+(localStorage.getItem("userName")||"")+" ❤️";
-
 const photo=localStorage.getItem("userPhoto");
 const homeImg=document.getElementById("homeProfile");
-if(homeImg){homeImg.loading="lazy";homeImg.src=photo?window.PM_API+photo:"";}
-
+if(homeImg){homeImg.loading="eager";homeImg.decoding="async";homeImg.src=photo?(String(photo).startsWith("http")?String(photo):window.PM_API+String(photo)):"";}
 showSection("home");
+return true;
 }
 
 async function loginUser(){
@@ -2777,7 +2827,7 @@ return;
 
 try{
 
-const response=await fetch("https://lovely-matrimony-q4vn.onrender.com/login",{
+const response=await fetch(PM_API+"/login",{
 
 method:"POST",
 
@@ -2816,6 +2866,7 @@ localStorage.setItem("userLookingFor",result.user.looking_for);
 localStorage.setItem("userPhoto",result.user.photo || "");
 
 localStorage.setItem("userCity",result.user.city || "");
+localStorage.setItem("pmLoggedIn","1");
 
 // Home Open
 
@@ -2940,174 +2991,61 @@ document.getElementById("age").value=age;
 });
 
 async function registerUser(){
-
 const name=document.getElementById("fullName").value.trim();
 const mobile=document.getElementById("mobile").value.trim();
 const pass=document.getElementById("pass").value;
 const cpass=document.getElementById("cpass").value;
-
-if(name===""){
-
-alert("Please enter your name.");
-
-return;
-
-}
-
-if(!/^[0-9]{10}$/.test(mobile)){
-
-alert("Please enter a valid 10-digit mobile number.");
-
-return;
-
-}
-
-if(pass.length<6){
-
-alert("Password must be at least 6 characters.");
-
-return;
-
-}
-
-if(pass!==cpass){
-
-alert("Passwords do not match.");
-
-return;
-
-}
-
+if(name==="")return alert("Please enter your name.");
+if(!/^[0-9]{10}$/.test(mobile))return alert("Please enter a valid 10-digit mobile number.");
+if(pass.length<6)return alert("Password must be at least 6 characters.");
+if(pass!==cpass)return alert("Passwords do not match.");
 const userData={
-
-name:name,
-
-mobile:mobile,
-
-password:pass,
-
-gender:document.getElementById("gender").value,
-
-looking_for:document.getElementById("lookingFor").value,
-
-dob:document.getElementById("dob").value,
-
-age:parseInt(document.getElementById("age").value)||0,
-
-height:document.getElementById("height").value,
-
-religion:document.getElementById("religion").value,
-
-caste:document.getElementById("caste").value,
-
-education:document.getElementById("education").value,
-
-occupation:document.getElementById("occupation").value,
-
-about:document.getElementById("about").value,
-
-city:"",
-
-state:"",
-
-country:""
-
+  name,mobile,password:pass,
+  gender:document.getElementById("gender").value,
+  looking_for:document.getElementById("lookingFor").value,
+  dob:document.getElementById("dob").value,
+  age:parseInt(document.getElementById("age").value)||0,
+  height:document.getElementById("height").value,
+  religion:document.getElementById("religion").value,
+  caste:document.getElementById("caste").value,
+  education:document.getElementById("education").value,
+  occupation:document.getElementById("occupation").value,
+  about:document.getElementById("about").value,
+  city:"",state:"",country:""
 };
-
 try{
+  const result=await window.pmApiFetch("/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(userData)},1);
+  if(!result.status)return alert(result.message||"Registration failed.");
+  const loginResult=await window.pmApiFetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mobile,password:pass})},1);
+  if(!loginResult.status)return alert(loginResult.message||"Registration completed. Please login.");
+  if(window.pmFirebaseLogin){try{await window.pmFirebaseLogin(mobile,pass);}catch(e){}}
+  const u=loginResult.user;
+  localStorage.setItem("userId",String(u.id));
+  localStorage.setItem("userName",u.name||name);
+  localStorage.setItem("userMobile",u.mobile||mobile);
+  localStorage.setItem("userGender",u.gender||"");
+  localStorage.setItem("userLookingFor",u.looking_for||"");
+  localStorage.setItem("userPhoto",u.photo||"");
+  localStorage.setItem("userCity",u.city||"");
+  localStorage.setItem("pmLoggedIn","1");
 
-const response=await fetch("https://lovely-matrimony-q4vn.onrender.com/register",{
-
-method:"POST",
-
-headers:{
-
-"Content-Type":"application/json"
-
-},
-
-body:JSON.stringify(userData)
-
-});
-
-const result=await response.json();
-
-if(result.status){
-
-// Login karke user id le
-
-const loginResponse = await fetch("https://lovely-matrimony-q4vn.onrender.com/login",{
-
-method:"POST",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify({
-
-mobile:mobile,
-
-password:pass
-
-})
-
-});
-
-const loginResult = await loginResponse.json();
-
-if(loginResult.status){
-
-if(window.pmFirebaseLogin){
-    await window.pmFirebaseLogin(mobile,pass);
-}
-
-const userId = loginResult.user.id;
-
-const file = document.getElementById("photo").files[0];
-
-if(file){
-
-const formData = new FormData();
-
-formData.append("photo",file);
-
-await fetch(
-
-"https://lovely-matrimony-q4vn.onrender.com/upload-profile-photo/"+userId,
-
-{
-
-method:"POST",
-
-body:formData
-
-}
-
-);
-
-}
-
-}
-
-alert("Registration Successful ❤️");
-
-showLogin();
-
-}else{
-
-alert(result.message);
-
-}
-
+  const file=document.getElementById("photo").files[0];
+  if(file){
+    const fd=new FormData(); fd.append("photo",file);
+    const upload=await fetch(PM_API+"/upload-profile-photo/"+u.id,{method:"POST",body:fd});
+    const up=await upload.json().catch(()=>({}));
+    if(up.photo)localStorage.setItem("userPhoto",up.photo);
+  }
+  alert("Registration Successful ❤️");
+  document.querySelector(".card").style.display="none";
+  document.getElementById("home").classList.remove("hidden");
+  document.getElementById("welcomeName").textContent="Welcome, "+(u.name||name)+" ❤️";
+  showSection("home");
+  loadProfile();
 }catch(error){
-
-console.log(error);
-
-alert("Unable to connect to server.");
-
+  console.log(error);
+  alert("Unable to connect to server.");
 }
-
 }
 
 
@@ -3507,72 +3445,6 @@ function startProfileChat(id,name){
 }
 
 
-async function sendChat(){
-
-if(!(await pmAccountGuard()))return;
-const senderId=localStorage.getItem("userId");
-
-const message=document.getElementById("chatInput").value.trim();
-
-if(message===""){
-
-return;
-
-}
-
-try{
-
-const response=await fetch(
-
-PM_API+"/send-message",
-
-{
-
-method:"POST",
-
-headers:{
-
-"Content-Type":"application/json"
-
-},
-
-body:JSON.stringify({
-
-sender_id:parseInt(senderId),
-
-receiver_id:currentReceiver,
-
-message:message
-
-})
-
-}
-
-);
-
-const result=await response.json();
-
-if(result.status){
-
-document.getElementById("chatInput").value="";
-
-loadChat();
-
-}else{
-
-alert(result.message);
-
-}
-
-}catch(error){
-
-console.log(error);
-
-alert("Unable to send message.");
-
-}
-
-}
 window.pmAccountGuard=async function(){
   const uid=parseInt(localStorage.getItem("userId")||"0");
   if(!uid)return true;
@@ -3589,11 +3461,27 @@ window.pmAccountGuard=async function(){
 };
 
 async function pmGuardedAutoLogin(){
-  if(await pmAccountGuard())autoLogin();
+  const uid=localStorage.getItem("userId");
+  if(uid){
+    // Paint the cached session immediately. Never show Register during refresh.
+    await autoLogin();
+    const ok=await pmAccountGuard();
+    if(!ok)return;
+    const u=await window.pmApiFetch("/profile/"+uid,{},0).catch(()=>null);
+    if(u&&u.status){
+      const p=u.profile||{};
+      if(p.name)localStorage.setItem("userName",p.name);
+      if(p.photo!==undefined)localStorage.setItem("userPhoto",p.photo||"");
+      document.getElementById("welcomeName").textContent="Welcome, "+(p.name||localStorage.getItem("userName")||"")+" ❤️";
+      const img=document.getElementById("homeProfile"); if(img&&p.photo)img.src=String(p.photo).startsWith("http")?String(p.photo):window.PM_API+String(p.photo);
+    }
+  }else{
+    await autoLogin();
+  }
 }
 
 pmGuardedAutoLogin();
-setInterval(pmAccountGuard,20000);
+setInterval(pmAccountGuard,30000);
 
 </script>
 

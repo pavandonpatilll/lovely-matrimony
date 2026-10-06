@@ -13,6 +13,7 @@ import threading
 import datetime
 import secrets
 from urllib.parse import quote, unquote
+from typing import Optional
 import firebase_admin
 from firebase_admin import credentials, firestore, auth as firebase_auth
 try:
@@ -439,6 +440,7 @@ for _sql in [
     "CREATE INDEX IF NOT EXISTS idx_messages_receiver_sender ON messages(receiver_id,sender_id)",
     "CREATE INDEX IF NOT EXISTS idx_profile_views_pair ON profile_views(viewer_id,profile_id)",
     "CREATE INDEX IF NOT EXISTS idx_profile_photos_user ON profile_photos(user_id,is_main)",
+    "CREATE INDEX IF NOT EXISTS idx_message_reactions_message ON message_reactions(message_id)",
 ]:
     try:
         cursor.execute(_sql)
@@ -503,6 +505,29 @@ try:
     conn.commit()
 except Exception as _e:
     print("Chat media migration warning:", _e)
+
+# WhatsApp-style reply support
+try:
+    cursor.execute("PRAGMA table_info(messages)")
+    _message_cols = {row[1] for row in cursor.fetchall()}
+    if "reply_to_id" not in _message_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
+    conn.commit()
+except Exception as _e:
+    print("Chat reply migration warning:", _e)
+
+# WhatsApp-style reactions (one active reaction per user/message)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS message_reactions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    reaction TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id,user_id)
+)
+""")
+conn.commit()
 
 # =====================================================
 # NOTIFICATIONS TABLE
@@ -820,6 +845,12 @@ class MessageModel(BaseModel):
     sender_id: int
     receiver_id: int
     message: str
+    reply_to_id: Optional[int] = None
+
+class MessageReactionModel(BaseModel):
+    message_id: int
+    user_id: int
+    reaction: str
 
 
 class PremiumModel(BaseModel):
@@ -1933,76 +1964,32 @@ def sent_interests(user_id:int):
 # =====================================================
 
 @app.post("/send-message")
-
 def send_message(data: MessageModel):
-
     if data.sender_id == data.receiver_id:
-
-        return{
-
-            "status":False,
-
-            "message":"Invalid User"
-
-        }
-
+        return {"status":False,"message":"Invalid User"}
     available, reason = ensure_pair_available(data.sender_id, data.receiver_id)
     if not available:
         return {"status":False,"message":reason,"blocked":True}
+    message_text = (data.message or "").strip()
+    if not message_text:
+        return {"status":False,"message":"Message cannot be empty."}
 
-    cursor.execute(
+    reply_id = None
+    if data.reply_to_id is not None:
+        cursor.execute("""
+            SELECT id FROM messages
+            WHERE id=? AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))
+        """,(int(data.reply_to_id),data.sender_id,data.receiver_id,data.receiver_id,data.sender_id))
+        if cursor.fetchone():
+            reply_id = int(data.reply_to_id)
 
-        """
-
-        INSERT INTO messages(
-
-        sender_id,
-
-        receiver_id,
-
-        message
-
-        )
-
-        VALUES(
-
-        ?,?,?
-
-        )
-
-        """,
-
-        (
-
-            data.sender_id,
-
-            data.receiver_id,
-
-            data.message
-
-        )
-
-    )
-
+    cursor.execute("""
+        INSERT INTO messages(sender_id,receiver_id,message,reply_to_id)
+        VALUES(?,?,?,?)
+    """,(data.sender_id,data.receiver_id,message_text,reply_id))
     conn.commit()
-
-    create_notification(
-
-        data.receiver_id,
-
-        "New Message 💬",
-
-        "You received a new message."
-
-    )
-
-    return{
-
-        "status":True,
-
-        "message":"Message Sent Successfully"
-
-    }
+    create_notification(data.receiver_id,"New Message 💬","You received a new message.")
+    return {"status":True,"message":"Message Sent Successfully","message_id":cursor.lastrowid}
 
 
 # =====================================================
@@ -2053,6 +2040,39 @@ def upload_chat_photo(sender_id:int, receiver_id:int, photo:UploadFile=File(...)
         try: photo.file.close()
         except Exception: pass
 
+@app.post("/message-reaction")
+def message_reaction(data: MessageReactionModel):
+    allowed={"❤️","👍","😂","😮","😢","🙏"}
+    if data.reaction not in allowed:
+        return {"status":False,"message":"Unsupported reaction."}
+    if not ensure_active_user(data.user_id):
+        return {"status":False,"message":"This profile has been disabled by admin."}
+    cursor.execute("SELECT sender_id,receiver_id FROM messages WHERE id=?",(data.message_id,))
+    msg=cursor.fetchone()
+    if not msg:
+        return {"status":False,"message":"Message not found."}
+    ok,reason=ensure_pair_available(data.user_id, msg["receiver_id"] if int(msg["sender_id"])==int(data.user_id) else msg["sender_id"])
+    if not ok:
+        return {"status":False,"message":reason,"blocked":True}
+    cursor.execute("SELECT id,reaction FROM message_reactions WHERE message_id=? AND user_id=?",(data.message_id,data.user_id))
+    existing=cursor.fetchone()
+    if existing and existing["reaction"]==data.reaction:
+        cursor.execute("DELETE FROM message_reactions WHERE id=?",(existing["id"],))
+        conn.commit()
+        return {"status":True,"removed":True,"reaction":data.reaction}
+    if existing:
+        cursor.execute("UPDATE message_reactions SET reaction=?,created_at=CURRENT_TIMESTAMP WHERE id=?",(data.reaction,existing["id"]))
+    else:
+        cursor.execute("INSERT INTO message_reactions(message_id,user_id,reaction) VALUES(?,?,?)",(data.message_id,data.user_id,data.reaction))
+    conn.commit()
+    return {"status":True,"removed":False,"reaction":data.reaction}
+
+@app.delete("/message-reaction/{message_id}")
+def delete_message_reaction(message_id:int,user_id:int):
+    cursor.execute("DELETE FROM message_reactions WHERE message_id=? AND user_id=?",(message_id,user_id))
+    conn.commit()
+    return {"status":True}
+
 @app.delete("/delete-message/{message_id}")
 def delete_message(message_id:int, user_id:int):
     if not ensure_active_user(user_id):
@@ -2063,73 +2083,44 @@ def delete_message(message_id:int, user_id:int):
         return {"status":False,"message":"Message not found"}
     if int(row["sender_id"]) != int(user_id):
         return {"status":False,"message":"You can delete only your own message."}
-
     media=row["media_url"] if "media_url" in row.keys() else None
+    cursor.execute("DELETE FROM message_reactions WHERE message_id=?",(message_id,))
     cursor.execute("DELETE FROM messages WHERE id=?",(message_id,))
     conn.commit()
-
     if media:
-        try:
-            filename=os.path.basename(media)
-            path=os.path.join(CHAT_UPLOADS_DIR,filename)
-            if os.path.isfile(path): os.remove(path)
-        except Exception:
-            pass
-
+        delete_stored_media(media, CHAT_UPLOADS_DIR)
     return {"status":True,"message":"Message deleted"}
 
 # =====================================================
 # CHAT HISTORY
 # =====================================================
-
 @app.get("/chat/{sender_id}/{receiver_id}")
-
 def get_chat(sender_id:int,receiver_id:int):
-
-    available, reason = ensure_pair_available(sender_id, receiver_id)
+    available, reason = ensure_pair_available(sender_id,receiver_id)
     if not available:
         return {"status":True,"blocked":True,"message":reason,"messages":[]}
-
-    cursor.execute(
-
-        """
-
+    cursor.execute("""
         SELECT * FROM (
-            SELECT *
-            FROM messages
-            WHERE (sender_id=? AND receiver_id=?)
-               OR (sender_id=? AND receiver_id=?)
-            ORDER BY id DESC
-            LIMIT 200
-        ) recent_messages
-        ORDER BY id ASC
-
-        """,
-
-        (
-
-            sender_id,
-
-            receiver_id,
-
-            receiver_id,
-
-            sender_id
-
-        )
-
-    )
-
-    chats=cursor.fetchall()
-
-    return{
-
-        "status":True,
-        "blocked":False,
-
-        "messages":[dict(row) for row in chats]
-
-    }
+            SELECT * FROM messages
+            WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?)
+            ORDER BY id DESC LIMIT 200
+        ) recent_messages ORDER BY id ASC
+    """,(sender_id,receiver_id,receiver_id,sender_id))
+    chats=[dict(row) for row in cursor.fetchall()]
+    ids=[int(x["id"]) for x in chats]
+    reactions_by={}
+    if ids:
+        marks=",".join("?" for _ in ids)
+        cursor.execute(f"SELECT message_id,user_id,reaction FROM message_reactions WHERE message_id IN ({marks})",ids)
+        for r in cursor.fetchall():
+            reactions_by.setdefault(int(r["message_id"]),[]).append({"user_id":int(r["user_id"]),"reaction":r["reaction"]})
+    by_id={int(x["id"]):x for x in chats}
+    for x in chats:
+        rid=x.get("reply_to_id")
+        original=by_id.get(int(rid)) if rid else None
+        x["reply_to"]={"id":original["id"],"sender_id":original["sender_id"],"message":original["message"],"media_url":original.get("media_url")} if original else None
+        x["reactions"]=reactions_by.get(int(x["id"]),[])
+    return {"status":True,"blocked":False,"messages":chats}
 
 
 # =====================================================
