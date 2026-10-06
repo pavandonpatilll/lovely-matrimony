@@ -26,7 +26,7 @@ except Exception:
 # =====================================================
 
 app = FastAPI(
-    title="JeevanSaathi API",
+    title="Prem Milan API",
     version="1.0"
 )
 
@@ -2068,9 +2068,10 @@ def send_message(data: MessageModel):
         INSERT INTO messages(sender_id,receiver_id,message,reply_to_id)
         VALUES(?,?,?,?)
     """,(data.sender_id,data.receiver_id,message_text,reply_id))
+    message_id = cursor.lastrowid
     conn.commit()
     create_notification(data.receiver_id,"New Message 💬","You received a new message.")
-    return {"status":True,"message":"Message Sent Successfully","message_id":cursor.lastrowid}
+    return {"status":True,"message":"Message Sent Successfully","message_id":message_id}
 
 
 # =====================================================

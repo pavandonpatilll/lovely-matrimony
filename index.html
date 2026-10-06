@@ -685,6 +685,36 @@ window.pmApiFetch=async function(path,options={},retries=1){
   throw lastError||new Error("Unable to connect");
 };
 </script>
+<script>
+// Network hardening: retry Render API requests once on transient network/5xx failures.
+// Normal successful requests are not delayed. Uploads and JSON calls both use the same guard.
+(function installPmNetworkGuard(){
+  if(window.__pmNetworkGuardInstalled)return;
+  window.__pmNetworkGuardInstalled=true;
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=async function(input,init){
+    let url="";
+    try{url=typeof input==="string"?input:(input&&input.url)||"";}catch(e){}
+    const isPmApi=!!url && url.startsWith(window.PM_API||"");
+    if(!isPmApi)return nativeFetch(input,init);
+    let lastError=null;
+    for(let attempt=0;attempt<2;attempt++){
+      try{
+        const response=await nativeFetch(input,init);
+        if(response.status>=502 && attempt===0){
+          await new Promise(r=>setTimeout(r,350));
+          continue;
+        }
+        return response;
+      }catch(error){
+        lastError=error;
+        if(attempt===0)await new Promise(r=>setTimeout(r,350));
+      }
+    }
+    throw lastError||new Error("Unable to connect to server.");
+  };
+})();
+</script>
 
 <div class="card">
 
@@ -2184,7 +2214,9 @@ function closeChatRealtime(){
 }
 
 async function openChat(receiverId,name){
-  currentReceiver=Number(receiverId);
+  const nextReceiver=Number(receiverId);
+  closeChatRealtime();
+  currentReceiver=nextReceiver;
   currentReceiverName=String(name||"User");
   showSection("chat");
   document.getElementById("conversationList").style.display="none";
@@ -2192,7 +2224,6 @@ async function openChat(receiverId,name){
   document.getElementById("chatUserName").textContent="💬 "+currentReceiverName;
   setChatPresence(false,false);
   cancelChatReply();
-  closeChatRealtime();
   setupChatInputEvents();
   pulsePresence();
   loadChat();
@@ -2232,6 +2263,18 @@ function startChatReply(id,text){
 function cancelChatReply(){
   pendingReplyId=null; pendingReplyText="";
   const bar=document.getElementById("chatReplyBar"); if(bar)bar.classList.remove("show");
+}
+
+// Safe message actions: never place raw message text inside an inline onclick attribute.
+function replyFromChatButton(button){
+  const bubble=button?.closest?.(".pmMsg");
+  if(!bubble)return;
+  startChatReply(Number(bubble.dataset.messageId||0),bubble.dataset.messageText||"Photo");
+}
+function reactMenuFromChatButton(button,event){
+  const bubble=button?.closest?.(".pmMsg");
+  if(!bubble)return;
+  showChatQuickMenu(event,Number(bubble.dataset.messageId||0),bubble.dataset.messageText||"Photo");
 }
 
 function hideChatQuickMenu(){
@@ -2358,8 +2401,8 @@ async function loadChat(silent=false){
           ${text?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;white-space:pre-wrap;">${text}</div>`:''}
           ${reactionHtml?`<div class="pmReactions">${reactionHtml}</div>`:''}
           <div class="pmActionRow">
-            <button type="button" onclick="startChatReply(${msg.id},${replyText})">↩ Reply</button>
-            <button type="button" onclick="showChatQuickMenu(event,${msg.id},${replyText})">😊 React</button>
+            <button type="button" onclick="replyFromChatButton(this)">↩ Reply</button>
+            <button type="button" onclick="reactMenuFromChatButton(this,event)">😊 React</button>
             ${mine?`<button type="button" onclick="deleteChatMessage(${msg.id})">🗑 Delete</button>`:''}
             ${state}
           </div>
@@ -2385,13 +2428,25 @@ async function sendChat(){
   const message=input.value.trim();
   if(message===""||!currentReceiver)return;
   const replyId=pendingReplyId;
+  const replyTextBefore=pendingReplyText;
   // Instant UI response: clear input and typing state before network round-trip.
   input.value="";cancelChatReply();sendTypingState(false);pulsePresence();
   try{
     const body={sender_id:senderId,receiver_id:Number(currentReceiver),message:message,reply_to_id:replyId};
     const result=await window.pmApiFetch("/send-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},0);
-    if(result.status){loadChat(true);}else{alert(result.message||"Unable to send.");}
-  }catch(e){console.log(e);alert("Unable to send message.");}
+    if(result.status){
+      loadChat(true);
+    }else{
+      input.value=message;
+      if(replyId)startChatReply(replyId,replyTextBefore);
+      alert(result.message||"Unable to send.");
+    }
+  }catch(e){
+    console.log(e);
+    input.value=message;
+    if(replyId)startChatReply(replyId,replyTextBefore);
+    alert("Unable to send message. Your text is kept, please retry.");
+  }
 }
 
 async function sendChatPhoto(input){
@@ -2957,9 +3012,8 @@ if(navPage){
   if(item)item.classList.add("active");
 }
 
-if(page!=="chat" && typeof chatInterval!=="undefined" && chatInterval){
-  clearInterval(chatInterval);
-  chatInterval=null;
+if(page!=="chat" && typeof closeChatRealtime==="function"){
+  closeChatRealtime();
 }
 
 window.scrollTo(0,0);
