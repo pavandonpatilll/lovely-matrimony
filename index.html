@@ -657,13 +657,34 @@ button,input,select,textarea{font:inherit;max-width:100%;}
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<script>
+(function pmConnectivityMonitor(){
+  const update=()=>{
+    document.documentElement.classList.toggle("pmOffline", navigator.onLine===false);
+    if(navigator.onLine){try{window.pmWakeServer();}catch(e){}}
+  };
+  addEventListener("online",update);
+  addEventListener("offline",update);
+  update();
+})();
+</script>
+<style>
+html.pmOffline::after{
+  content:"Reconnecting…";
+  position:fixed;left:50%;bottom:82px;transform:translateX(-50%);
+  z-index:99999;padding:7px 13px;border-radius:999px;
+  background:rgba(35,25,35,.92);color:#fff;font-size:12px;font-weight:700;
+  box-shadow:0 6px 20px rgba(0,0,0,.18);pointer-events:none;
+}
+</style>
 </head>
 
 <body>
 <script>
 window.PM_API="https://lovely-matrimony-q4vn.onrender.com";
 window.__pmNativeFetch=window.fetch.bind(window);
-window.pmApiFetch=async function(path,options={},retries=1,timeoutMs=7000){
+window.pmApiFetch=async function(path,options={},retries=2,timeoutMs=12000){
   const base=window.PM_API||"";
   let lastError=null;
   for(let attempt=0;attempt<=retries;attempt++){
@@ -685,6 +706,28 @@ window.pmApiFetch=async function(path,options={},retries=1,timeoutMs=7000){
   }
   throw lastError||new Error("Unable to connect");
 };
+window.pmQuietRetry=function(label){
+  try{
+    const key="__pm_retry_"+String(label||"").replace(/[^a-z0-9_-]/gi,"_");
+    const now=Date.now(), prev=Number(sessionStorage.getItem(key)||"0");
+    if(now-prev<1200)return;
+    sessionStorage.setItem(key,String(now));
+    console.warn("Prem Milan temporary network issue:",label);
+  }catch(e){}
+};
+window.pmRetryLater=function(label,fn,delay=700){
+  try{
+    const key="__pm_retry_count_"+String(label||"").replace(/[^a-z0-9_-]/gi,"_");
+    const n=Number(sessionStorage.getItem(key)||"0");
+    if(n>=2){sessionStorage.removeItem(key);return;}
+    sessionStorage.setItem(key,String(n+1));
+    setTimeout(()=>{
+      Promise.resolve(fn()).finally(()=>{
+        try{sessionStorage.removeItem(key);}catch(e){}
+      });
+    },delay);
+  }catch(e){}
+};
 window.pmWakeServer=function(){
   try{ window.__pmNativeFetch((window.PM_API||"")+"/",{cache:"no-store",keepalive:true}).catch(()=>{}); }catch(e){}
 };
@@ -703,17 +746,17 @@ window.pmWakeServer();
     const isPmApi=!!url && url.startsWith(window.PM_API||"");
     if(!isPmApi)return nativeFetch(input,init);
     let lastError=null;
-    for(let attempt=0;attempt<2;attempt++){
+    for(let attempt=0;attempt<3;attempt++){
       try{
         const response=await nativeFetch(input,init);
-        if(response.status>=502 && attempt===0){
-          await new Promise(r=>setTimeout(r,350));
+        if(response.status>=502 && attempt<2){
+          await new Promise(r=>setTimeout(r,350*(attempt+1)));
           continue;
         }
         return response;
       }catch(error){
         lastError=error;
-        if(attempt===0)await new Promise(r=>setTimeout(r,350));
+        if(attempt<2)await new Promise(r=>setTimeout(r,350*(attempt+1)));
       }
     }
     throw lastError||new Error("Unable to connect to server.");
@@ -1660,7 +1703,7 @@ document.getElementById("changePasswordBox").classList.add("hidden");
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -1724,7 +1767,7 @@ buyPremium();
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -1813,7 +1856,7 @@ document.getElementById("chatMenu").style.display="none";
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -1897,7 +1940,7 @@ document.getElementById("favoriteList").innerHTML = html;
 
 console.log(error);
 
-alert("Unable to load favorites.");
+pmRetryLater("favorites",loadFavorites);
 
 }
 
@@ -1943,7 +1986,7 @@ loadFavorites();
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -2018,7 +2061,7 @@ document.getElementById("notificationList").innerHTML=html;
 
 console.log(error);
 
-alert("Unable to load notifications.");
+pmRetryLater("notifications",loadNotifications);
 
 }
 
@@ -2103,7 +2146,7 @@ document.getElementById("conversationList").innerHTML=html;
 
 console.log(error);
 
-alert("Unable to load conversations.");
+pmRetryLater("conversations",loadConversations);
 
 }
 
@@ -2432,25 +2475,54 @@ async function sendChat(){
   const input=document.getElementById("chatInput");
   const message=input.value.trim();
   if(message===""||!currentReceiver)return;
+
   const replyId=pendingReplyId;
-  const replyTextBefore=pendingReplyText;
-  // Instant UI response: clear input and typing state before network round-trip.
-  input.value="";cancelChatReply();sendTypingState(false);pulsePresence();
-  try{
-    const body={sender_id:senderId,receiver_id:Number(currentReceiver),message:message,reply_to_id:replyId};
-    const result=await window.pmApiFetch("/send-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},1,20000);
-    if(result.status){
-      loadChat(true);
-    }else{
-      input.value=message;
-      if(replyId)startChatReply(replyId,replyTextBefore);
-      alert(result.message||"Unable to send.");
+  const sendBody={
+    sender_id:senderId,
+    receiver_id:Number(currentReceiver),
+    message:message,
+    reply_to_id:replyId
+  };
+
+  input.value="";
+  cancelChatReply();
+  sendTypingState(false);
+  pulsePresence();
+
+  let sent=false;
+  for(let attempt=0;attempt<3&&!sent;attempt++){
+    try{
+      const result=await window.pmApiFetch(
+        "/send-message",
+        {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(sendBody)
+        },
+        0,
+        15000
+      );
+      if(result.status){
+        sent=true;
+        loadChat(true);
+        break;
+      }
+      if(result.blocked||result.message){
+        console.warn("send message rejected:",result.message||"");
+        break;
+      }
+    }catch(e){
+      console.warn("send retry",attempt,e);
+      if(attempt<2)await new Promise(r=>setTimeout(r,450*(attempt+1)));
     }
-  }catch(e){
-    console.log(e);
+  }
+
+  if(!sent){
     input.value=message;
-    if(replyId)startChatReply(replyId,replyTextBefore);
-    alert("Unable to send message. Your text is kept, please retry.");
+    pendingReplyId=replyId;
+    pendingReplyText=message;
+    startChatReply(replyId,message);
+    pmRetryLater("send_message",sendChat,900);
   }
 }
 
@@ -2465,9 +2537,9 @@ async function sendChatPhoto(input){
     const r=await fetch(PM_API+"/upload-chat-photo/"+uid+"/"+currentReceiver,{method:"POST",body:fd});
     const d=await r.json();
     if(d.blocked)alert(d.message||"Chat is blocked.");
-    else if(!d.status)alert(d.message||"Unable to send photo.");
+    else if(!d.status){console.warn("chat photo rejected",d.message||"");}
     else loadChat(true);
-  }catch(e){console.log(e);alert("Unable to send photo.");}
+  }catch(e){console.warn("chat photo retry",e);pmRetryLater("chat_photo",()=>sendChatPhoto(input),700);}
   input.value="";
 }
 
@@ -2570,7 +2642,7 @@ document.getElementById("matchesList").innerHTML=html;
 
 console.log(error);
 
-alert("Unable to load matches.");
+pmRetryLater("matches",loadMatches);
 
 }
 
@@ -2625,7 +2697,7 @@ alert(result.message);
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -2803,7 +2875,7 @@ document.getElementById("interestList").innerHTML=html;
 
 console.log(error);
 
-alert("Unable to load interests.");
+pmRetryLater("interests",loadReceivedInterests);
 
 }
 
@@ -2890,7 +2962,7 @@ document.getElementById("editCountry").value = user.country || "";
 
 console.log(error);
 
-alert("Unable to load profile.");
+pmRetryLater("profile",loadProfile);
 
 }
 
@@ -2985,7 +3057,7 @@ alert(result.message);
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -3158,7 +3230,7 @@ alert(result.message);
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -3293,7 +3365,7 @@ try{
   loadProfile();
 }catch(error){
   console.log(error);
-  alert("Unable to connect to server.");
+  pmQuietRetry("server");
 }
 }
 
@@ -3334,7 +3406,7 @@ loadReceivedInterests();
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -3400,7 +3472,7 @@ menu.style.display="none";
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -3459,7 +3531,7 @@ menu.style.display="none";
 
 console.log(error);
 
-alert("Unable to connect to server.");
+pmQuietRetry("server");
 
 }
 
@@ -3740,7 +3812,7 @@ pulsePresence();
 <script>
 const PM_API=window.PM_API||"https://lovely-matrimony-q4vn.onrender.com";
 function pmUrl(p){return p?(p.startsWith("http")?p:PM_API+p):""}
-async function pmLoadGallery(){const uid=localStorage.getItem("userId"),box=document.getElementById("pmPhotoGrid");if(!uid||!box)return;box.innerHTML="<div style='grid-column:1/-1;text-align:center;padding:20px'>Loading photos…</div>";try{const d=await (await fetch(PM_API+"/profile-full/"+uid)).json();if(!d.status)return box.innerHTML="Unable to load photos";box.innerHTML=(d.photos||[]).map(p=>`<div class="pmPhotoItem"><img src="${pmUrl(p.photo)}">${p.is_main?'<span class="pmPhotoBadge">MAIN</span>':''}<div class="pmPhotoActions">${!p.is_main&&p.id?`<button onclick="pmSetMain(${p.id})">⭐</button>`:''}${p.id?`<button onclick="pmDeletePhoto(${p.id})">🗑</button>`:''}</div></div>`).join("")||"<div style='grid-column:1/-1;text-align:center;padding:20px'>No photos yet</div>"}catch(e){box.innerHTML="Server connection failed"}}
+async function pmLoadGallery(){const uid=localStorage.getItem("userId"),box=document.getElementById("pmPhotoGrid");if(!uid||!box)return;box.innerHTML="<div style='grid-column:1/-1;text-align:center;padding:20px'>Loading photos…</div>";try{const d=await (await fetch(PM_API+"/profile-full/"+uid)).json();if(!d.status)return box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#777">Refreshing photos…</div>';box.innerHTML=(d.photos||[]).map(p=>`<div class="pmPhotoItem"><img src="${pmUrl(p.photo)}">${p.is_main?'<span class="pmPhotoBadge">MAIN</span>':''}<div class="pmPhotoActions">${!p.is_main&&p.id?`<button onclick="pmSetMain(${p.id})">⭐</button>`:''}${p.id?`<button onclick="pmDeletePhoto(${p.id})">🗑</button>`:''}</div></div>`).join("")||"<div style='grid-column:1/-1;text-align:center;padding:20px'>No photos yet</div>"}catch(e){box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#777">Refreshing photos…</div>';pmRetryLater("gallery",pmLoadGallery);}}
 async function pmUploadPhotos(input){const files=Array.from(input.files||[]);if(!files.length)return;const uid=localStorage.getItem("userId");if(!uid)return alert("Please login first.");const fd=new FormData();files.slice(0,4).forEach(f=>fd.append("photos",f));try{const d=await (await fetch(PM_API+"/upload-profile-photos/"+uid,{method:"POST",body:fd})).json();alert(d.message||"Photos uploaded");input.value="";pmLoadGallery();if(typeof loadProfile==="function")loadProfile()}catch(e){alert("Unable to upload photos.")}}
 async function pmDeletePhoto(id){if(!confirm("Delete this photo?"))return;const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/delete-profile-photo/"+uid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo_id:id})})).json();alert(d.message);if(d.status)pmLoadGallery()}
 async function pmSetMain(id){const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/set-main-photo/"+uid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo_id:id})})).json();alert(d.message);if(d.status){pmLoadGallery();if(typeof loadProfile==="function")loadProfile()}}
@@ -3751,10 +3823,10 @@ function pmSelectImage(el,url){document.getElementById("pmHeroImage").src=url;do
 function pmCloseProfile(){document.getElementById("pmProfileModal").classList.add("hidden")}
 async function pmSendInterest(id){const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/send-interest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sender_id:+uid,receiver_id:id})})).json();alert(d.message)}
 function pmStartChat(id,name){pmCloseProfile();currentReceiver=id;currentReceiverName=name;if(typeof showSection==="function")showSection("chat");if(typeof openChat==="function")openChat(id,name)}
-async function pmLoadMatches(){const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");if(!uid||!box)return;box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";try{const d=await (await fetch(PM_API+"/smart-matches/"+uid)).json();if(!d.status)return box.innerHTML="Unable to load matches.";if(!d.matches.length)return box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px"><div style="flex:1"><div style="font-size:19px;font-weight:800">${u.name} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${u.city||'—'}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${u.match_percent}% Match</div><div style="font-size:12px;color:#777">${(u.match_reasons||[]).join(' • ')||'Compatible profile'}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmOpenProfile(${u.id})">View Full Profile</button></div></div>`).join("")}catch(e){box.innerHTML="Unable to connect to server."}}
+async function pmLoadMatches(){const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");if(!uid||!box)return;box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";try{const d=await (await fetch(PM_API+"/smart-matches/"+uid)).json();if(!d.status)return box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';if(!d.matches.length)return box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px"><div style="flex:1"><div style="font-size:19px;font-weight:800">${u.name} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${u.city||'—'}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${u.match_percent}% Match</div><div style="font-size:12px;color:#777">${(u.match_reasons||[]).join(' • ')||'Compatible profile'}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmOpenProfile(${u.id})">View Full Profile</button></div></div>`).join("")}catch(e){box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';pmRetryLater("smart_matches",pmLoadMatches);}}
 window.loadMatches=pmLoadMatches;window.profileModalView=pmOpenProfile;window.viewProfile=viewProfile;
 const _pmLoadEdit=window.loadEditProfile;window.loadEditProfile=async function(){if(typeof _pmLoadEdit==='function')await _pmLoadEdit();pmLoadGallery()};
-window.interestAction=async function(interestId,status){try{const uid=localStorage.getItem('userId'),d=await (await fetch(PM_API+'/received-interests/'+uid)).json(),item=(d.interests||[]).find(x=>x.interest_id==interestId);if(!item)return;const r=await (await fetch(PM_API+'/respond-interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:+uid,other_id:item.sender_id,status})})).json();alert(r.message);if(typeof loadReceivedInterests==='function')loadReceivedInterests()}catch(e){alert('Unable to connect to server.')}};
+window.interestAction=async function(interestId,status){try{const uid=localStorage.getItem('userId'),d=await (await fetch(PM_API+'/received-interests/'+uid)).json(),item=(d.interests||[]).find(x=>x.interest_id==interestId);if(!item)return;const r=await (await fetch(PM_API+'/respond-interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:+uid,other_id:item.sender_id,status})})).json();alert(r.message);if(typeof loadReceivedInterests==='function')loadReceivedInterests()}catch(e){pmQuietRetry('interest_action')}};
 </script>
 
 
