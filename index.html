@@ -678,6 +678,7 @@ html.pmOffline::after{
   box-shadow:0 6px 20px rgba(0,0,0,.18);pointer-events:none;
 }
 </style>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 
 <body>
@@ -1774,54 +1775,81 @@ pmQuietRetry("server");
 }
 
 async function buyPremium(){
-
-const userId=localStorage.getItem("userId");
-
-try{
-
-const response=await fetch(
-
-"https://lovely-matrimony-q4vn.onrender.com/buy-premium",
-
-{
-
-method:"POST",
-
-headers:{
-
-"Content-Type":"application/json"
-
-},
-
-body:JSON.stringify({
-
-user_id:parseInt(userId),
-
-plan:"Gold",
-
-amount:499,
-
-payment_id:"TEST_PAYMENT"
-
-})
-
+  const userId = Number(localStorage.getItem("userId") || 0);
+  if (!userId) { alert("Please login first ❤️"); return; }
+  if (typeof Razorpay === "undefined") {
+    alert("Razorpay Checkout load nahi hua. Internet check karke dobara try karo.");
+    return;
+  }
+  try {
+    const createResponse = await fetch(PM_API + "/create-subscription", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId })
+    });
+    const created = await createResponse.json();
+    if (!createResponse.ok || !created.status) {
+      throw new Error(created.message || "Subscription start nahi ho paaya.");
+    }
+    const options = {
+      key: created.key_id,
+      subscription_id: created.subscription_id,
+      name: "Prem Milan",
+      description: "Premium membership - ₹15/month (Test Mode)",
+      image: "",
+      prefill: {},
+      notes: { user_id: String(userId), app: "Prem Milan" },
+      theme: { color: "#ff4d6d" },
+      handler: async function (paymentResult) {
+        try {
+          const verifyResponse = await fetch(PM_API + "/verify-subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: userId,
+              razorpay_payment_id: paymentResult.razorpay_payment_id,
+              razorpay_subscription_id: paymentResult.razorpay_subscription_id,
+              razorpay_signature: paymentResult.razorpay_signature
+            })
+          });
+          const verified = await verifyResponse.json();
+          if (!verifyResponse.ok || !verified.status) {
+            alert(verified.message || "Payment verify nahi hua. Payment status check karo.");
+            return;
+          }
+          alert("❤️ " + (verified.message || "Prem Milan Premium Active!"));
+          await checkPremiumStatusAfterPayment();
+        } catch (e) {
+          alert("Payment hua ho sakta hai, lekin verification response nahi mila. Support se status verify karwao.");
+        }
+      },
+      modal: {
+        ondismiss: function () { console.log("Razorpay checkout dismissed"); }
+      }
+    };
+    const checkout = new Razorpay(options);
+    checkout.on("payment.failed", function (response) {
+      const msg = response && response.error && response.error.description;
+      alert("Payment complete nahi hua: " + (msg || "Please try again."));
+    });
+    checkout.open();
+  } catch (error) {
+    alert(error.message || "Unable to start subscription. Please try again.");
+  }
 }
 
-);
-
-const result=await response.json();
-
-alert(result.message);
-
-}catch(error){
-
-console.log(error);
-
-alert("Unable to activate Premium.");
-
+async function checkPremiumStatusAfterPayment(){
+  const userId = localStorage.getItem("userId");
+  try {
+    const response = await fetch(PM_API + "/premium-status/" + encodeURIComponent(userId));
+    const result = await response.json();
+    if (result.status && result.premium) {
+      const el = document.getElementById("premiumStatus");
+      if (el) el.textContent = "Premium Active ❤️";
+    }
+  } catch (e) { console.warn("Premium status refresh failed", e); }
 }
 
-}
 
 
 async function addFavorite(receiverId = currentReceiver){

@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi import UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,9 @@ import json
 import threading
 import datetime
 import secrets
+import hmac
+import urllib.request
+import urllib.error
 from urllib.parse import quote, unquote
 import firebase_admin
 from firebase_admin import credentials, firestore, auth as firebase_auth
@@ -25,9 +28,50 @@ except Exception:
 # =====================================================
 
 app = FastAPI(
-    title="JeevanSaathi API",
-    version="1.0"
+    title="Prem Milan API",
+    version="1.1"
 )
+
+# Razorpay TEST MODE configuration. Keep the Plan ID in code as requested.
+# RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in Render environment variables.
+RAZORPAY_PLAN_ID = "plan_TnTOiuS4QDziLd"
+RAZORPAY_API_BASE = "https://api.razorpay.com/v1"
+PREMIUM_AMOUNT_INR = 15
+PREMIUM_PLAN_LABEL = "Prem Milan Premium Monthly"
+
+
+def razorpay_credentials():
+    key_id = os.getenv("RAZORPAY_KEY_ID", "").strip()
+    key_secret = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+    if not key_id or not key_secret:
+        raise RuntimeError("Razorpay Test Mode keys are not configured in Render.")
+    return key_id, key_secret
+
+
+def razorpay_api_request(path, payload):
+    key_id, key_secret = razorpay_credentials()
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        RAZORPAY_API_BASE + path,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Basic " + __import__("base64").b64encode(
+                f"{key_id}:{key_secret}".encode("utf-8")
+            ).decode("ascii"),
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            details = json.loads(exc.read().decode("utf-8"))
+            description = details.get("error", {}).get("description", "Razorpay API request failed")
+        except Exception:
+            description = "Razorpay API request failed"
+        raise ValueError(description)
 
 # =====================================================
 # CORS
@@ -699,6 +743,15 @@ except:
 try:
     cursor.execute("ALTER TABLE premium ADD COLUMN end_date TEXT")
 except:
+    pass
+
+try:
+    cursor.execute("ALTER TABLE premium ADD COLUMN subscription_id TEXT")
+except Exception:
+    pass
+try:
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_premium_subscription_id ON premium(subscription_id)")
+except Exception:
     pass
 
 try:
@@ -2764,110 +2817,177 @@ def my_notifications(user_id: int):
     }
 
 # =====================================================
-# BUY PREMIUM
+# RAZORPAY SUBSCRIPTIONS (TEST MODE)
 # =====================================================
 
-@app.post("/buy-premium")
-def buy_premium(data: PremiumModel):
+class CreateSubscriptionModel(BaseModel):
+    user_id: int
 
+
+class VerifySubscriptionModel(BaseModel):
+    user_id: int
+    razorpay_payment_id: str
+    razorpay_subscription_id: str
+    razorpay_signature: str
+
+
+def set_subscription_state(subscription_id, state, payment_id=None):
+    """Update only the local record linked to this Razorpay subscription."""
+    cursor.execute(
+        "SELECT user_id FROM premium WHERE subscription_id=? ORDER BY id DESC LIMIT 1",
+        (subscription_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    user_id = int(row["user_id"])
+    now = datetime.datetime.utcnow()
+    if state in {"active", "authenticated", "charged"}:
+        end = (now + datetime.timedelta(days=30)).isoformat(timespec="seconds") + "Z"
+        cursor.execute(
+            "UPDATE premium SET payment_id=COALESCE(?,payment_id), payment_status='Success', status='Active', start_date=COALESCE(start_date,?), end_date=? WHERE subscription_id=?",
+            (payment_id, now.isoformat(timespec="seconds") + "Z", end, subscription_id),
+        )
+        cursor.execute("UPDATE users SET is_premium=1 WHERE id=?", (user_id,))
+    elif state in {"cancelled", "halted", "paused", "expired"}:
+        cursor.execute(
+            "UPDATE premium SET status=?, payment_status=? WHERE subscription_id=?",
+            (state.title(), state.title(), subscription_id),
+        )
+        # Keep access if a separate active subscription exists.
+        cursor.execute("SELECT 1 FROM premium WHERE user_id=? AND status='Active' AND subscription_id<>? LIMIT 1", (user_id, subscription_id))
+        if cursor.fetchone() is None:
+            cursor.execute("UPDATE users SET is_premium=0 WHERE id=?", (user_id,))
+    else:
+        cursor.execute(
+            "UPDATE premium SET status='Pending', payment_status=? WHERE subscription_id=?",
+            (state.title(), subscription_id),
+        )
+    conn.commit()
+    return True
+
+
+@app.post("/create-subscription")
+def create_subscription(data: CreateSubscriptionModel):
+    if not ensure_active_user(data.user_id):
+        return {"status": False, "message": "Account not found or disabled."}
     try:
-
+        key_id, _ = razorpay_credentials()
+        # Create a real Razorpay subscription. No client-side amount or payment ID is trusted.
+        sub = razorpay_api_request("/subscriptions", {
+            "plan_id": RAZORPAY_PLAN_ID,
+            "customer_notify": 1,
+            "quantity": 1,
+            "total_count": 12,
+            "notes": {"prem_milan_user_id": str(data.user_id), "app": "Prem Milan"},
+        })
+        subscription_id = str(sub.get("id", ""))
+        if not subscription_id:
+            raise ValueError("Razorpay did not return a subscription ID.")
         cursor.execute(
-            """
-            INSERT INTO premium(
-                user_id,
-                plan,
-                amount,
-                payment_id,
-                payment_status,
-                status
-            )
-            VALUES(?,?,?,?,?,?)
-            """,
-            (
-                data.user_id,
-                data.plan,
-                data.amount,
-                data.payment_id,
-                "Success",
-                "Active"
-            )
+            "INSERT INTO premium(user_id,plan,amount,payment_id,payment_status,start_date,end_date,status,subscription_id) VALUES(?,?,?,?,?,?,?,?,?)",
+            (data.user_id, PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR, "", "Pending", None, None, "Pending", subscription_id),
         )
-
-        cursor.execute(
-            """
-            UPDATE users
-            SET is_premium=1
-            WHERE id=?
-            """,
-            (data.user_id,)
-        )
-
         conn.commit()
-
         return {
             "status": True,
-            "message": "Premium Activated"
+            "key_id": key_id,
+            "subscription_id": subscription_id,
+            "plan": PREMIUM_PLAN_LABEL,
+            "amount_inr": PREMIUM_AMOUNT_INR,
+            "message": "Subscription created. Complete checkout to activate Premium.",
         }
-
-    except Exception as e:
-
+    except Exception as exc:
         conn.rollback()
+        print("Razorpay create subscription error:", str(exc))
+        return {"status": False, "message": str(exc) if isinstance(exc, (RuntimeError, ValueError)) else "Could not create subscription. Check Render Razorpay Test Mode settings."}
 
-        return {
-            "status": False,
-            "message": str(e)
+
+@app.post("/verify-subscription")
+def verify_subscription(data: VerifySubscriptionModel):
+    if not ensure_active_user(data.user_id):
+        return {"status": False, "message": "Account not found or disabled."}
+    try:
+        _, key_secret = razorpay_credentials()
+        # Confirm this subscription was created by this backend for this user.
+        cursor.execute("SELECT id FROM premium WHERE user_id=? AND subscription_id=? ORDER BY id DESC LIMIT 1", (data.user_id, data.razorpay_subscription_id))
+        if cursor.fetchone() is None:
+            return {"status": False, "message": "Subscription does not match this account."}
+        expected = hmac.new(
+            key_secret.encode("utf-8"),
+            f"{data.razorpay_payment_id}|{data.razorpay_subscription_id}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, data.razorpay_signature):
+            return {"status": False, "message": "Payment signature verification failed."}
+        set_subscription_state(data.razorpay_subscription_id, "authenticated", data.razorpay_payment_id)
+        firebase_sync_async()
+        return {"status": True, "premium": True, "message": "Payment verified. Premium activated! ❤️"}
+    except Exception as exc:
+        print("Razorpay verification error:", str(exc))
+        return {"status": False, "message": "Could not verify payment. Please contact support if payment was deducted."}
+
+
+@app.post("/razorpay-webhook")
+async def razorpay_webhook(request: Request):
+    """Optional lifecycle webhook; configure this URL in Razorpay Dashboard."""
+    raw_body = await request.body()
+    webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
+    signature = request.headers.get("X-Razorpay-Signature", "")
+    if not webhook_secret:
+        return {"status": False, "message": "Webhook secret is not configured."}
+    expected = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    if not signature or not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+    try:
+        event_data = json.loads(raw_body.decode("utf-8"))
+        event = event_data.get("event", "")
+        payload = event_data.get("payload", {})
+        sub_obj = (payload.get("subscription", {}) or {}).get("entity", {}) or {}
+        payment_obj = (payload.get("payment", {}) or {}).get("entity", {}) or {}
+        subscription_id = sub_obj.get("id") or payment_obj.get("subscription_id")
+        payment_id = payment_obj.get("id")
+        event_map = {
+            "subscription.activated": "active",
+            "subscription.charged": "charged",
+            "subscription.authenticated": "authenticated",
+            "subscription.pending": "pending",
+            "subscription.halted": "halted",
+            "subscription.cancelled": "cancelled",
+            "subscription.paused": "paused",
+            "subscription.resumed": "active",
+            "subscription.completed": "expired",
         }
+        state = event_map.get(event)
+        if subscription_id and state:
+            set_subscription_state(subscription_id, state, payment_id)
+            firebase_sync_async()
+        return {"status": True}
+    except Exception as exc:
+        print("Razorpay webhook processing error:", str(exc))
+        raise HTTPException(status_code=400, detail="Webhook processing failed")
 
 
-# =====================================================
-# PREMIUM STATUS
-# =====================================================
+@app.post("/buy-premium")
+def buy_premium_disabled():
+    # Prevent the old insecure endpoint from activating Premium without payment verification.
+    raise HTTPException(status_code=410, detail="Fake payment activation is disabled. Use /create-subscription and /verify-subscription.")
+
 
 @app.get("/premium-status/{user_id}")
-
-def premium_status(user_id:int):
-
-    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin."}
-
-    cursor.execute(
-
-        """
-
-        SELECT is_premium
-
-        FROM users
-
-        WHERE id=?
-
-        """,
-
-        (
-
-            user_id,
-
-        )
-
-    )
-
-    user=cursor.fetchone()
-
+def premium_status(user_id: int):
+    if not ensure_active_user(user_id):
+        return {"status": False, "message": "This profile has been disabled by admin."}
+    cursor.execute("SELECT is_premium FROM users WHERE id=?", (user_id,))
+    user = cursor.fetchone()
     if user is None:
-
-        return{
-
-            "status":False,
-
-            "message":"User Not Found"
-
-        }
-
-    return{
-
-        "status":True,
-
-        "premium":bool(user["is_premium"])
-
+        return {"status": False, "message": "User Not Found"}
+    cursor.execute("SELECT plan,status,end_date FROM premium WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,))
+    sub = cursor.fetchone()
+    return {
+        "status": True,
+        "premium": bool(user["is_premium"]),
+        "subscription": dict(sub) if sub else None,
     }
 
 
