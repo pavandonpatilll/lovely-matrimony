@@ -1015,34 +1015,47 @@ def ensure_active_user(user_id):
 
 
 def user_has_premium(user_id):
-    """Premium access is granted only for a verified active subscription."""
+    """Return Premium only for this exact user and a currently valid active subscription.
+
+    Use a request-local SQLite connection: the old global cursor is shared by
+    concurrent FastAPI requests and could interleave SELECT/fetch operations,
+    causing one user's Premium lookup to read another request's rows.
+    """
+    db = None
     try:
-        cursor.execute(
+        uid = int(user_id)
+        db = sqlite3.connect(DB_PATH, timeout=10)
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
             "SELECT status, end_date FROM premium WHERE user_id=? ORDER BY id DESC",
-            (int(user_id),),
-        )
-        rows = cursor.fetchall()
-        now = datetime.datetime.utcnow()
+            (uid,),
+        ).fetchall()
+        now = datetime.datetime.now(datetime.timezone.utc)
         for row in rows:
-            if str(row["status"] or "").lower() != "active":
+            if str(row["status"] or "").strip().lower() != "active":
                 continue
             end_date = row["end_date"]
+            # Never grant access indefinitely if the subscription has no expiry.
             if not end_date:
-                return True
+                continue
             try:
-                end_text = str(end_date).replace("Z", "+00:00")
-                end_dt = datetime.datetime.fromisoformat(end_text)
-                if end_dt.tzinfo:
-                    end_dt = end_dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
-                if end_dt > now:
+                end_dt = datetime.datetime.fromisoformat(
+                    str(end_date).strip().replace("Z", "+00:00")
+                )
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+                if end_dt.astimezone(datetime.timezone.utc) > now:
                     return True
-            except Exception:
-                # A malformed end date must not accidentally grant access.
+            except (TypeError, ValueError, OverflowError):
                 continue
         return False
     except Exception as premium_error:
         print("Premium access check warning:", premium_error)
         return False
+    finally:
+        if db is not None:
+            db.close()
+
 
 def users_blocked(user_a, user_b):
     cursor.execute("""
@@ -2874,45 +2887,95 @@ class VerifySubscriptionModel(BaseModel):
 
 
 def set_subscription_state(subscription_id, state, payment_id=None):
-    """Update only the local record linked to this Razorpay subscription."""
-    cursor.execute(
-        "SELECT user_id FROM premium WHERE subscription_id=? ORDER BY id DESC LIMIT 1",
-        (subscription_id,),
-    )
-    row = cursor.fetchone()
-    if row is None:
+    """Update only the subscription row tied to the owning user."""
+    db = None
+    try:
+        db = sqlite3.connect(DB_PATH, timeout=10)
+        db.row_factory = sqlite3.Row
+        row = db.execute(
+            "SELECT user_id FROM premium WHERE subscription_id=? ORDER BY id DESC LIMIT 1",
+            (str(subscription_id),),
+        ).fetchone()
+        if row is None:
+            return False
+
+        user_id = int(row["user_id"])
+        normalized = str(state or "").strip().lower()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if normalized in {"active", "authenticated", "charged", "resumed"}:
+            # Start/renew this user's own 30-day access window.
+            end = (now + datetime.timedelta(days=30)).isoformat(timespec="seconds").replace("+00:00", "Z")
+            db.execute(
+                """UPDATE premium
+                   SET payment_id=COALESCE(?,payment_id),
+                       payment_status='Success', status='Active',
+                       start_date=COALESCE(start_date,?), end_date=?
+                   WHERE subscription_id=? AND user_id=?""",
+                (
+                    payment_id,
+                    now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                    end,
+                    str(subscription_id),
+                    user_id,
+                ),
+            )
+            db.execute("UPDATE users SET is_premium=1 WHERE id=?", (user_id,))
+        elif normalized in {"cancelled", "halted", "paused", "expired", "completed"}:
+            db.execute(
+                """UPDATE premium SET status=?, payment_status=?
+                   WHERE subscription_id=? AND user_id=?""",
+                (normalized.title(), normalized.title(), str(subscription_id), user_id),
+            )
+            # This flag is display-only; entitlement is checked from premium rows.
+            db.execute("UPDATE users SET is_premium=? WHERE id=?",
+                       (1 if _user_has_premium_in_connection(db, user_id, exclude_subscription=str(subscription_id)) else 0, user_id))
+        else:
+            db.execute(
+                """UPDATE premium SET status='Pending', payment_status=?
+                   WHERE subscription_id=? AND user_id=?""",
+                (normalized.title() or "Pending", str(subscription_id), user_id),
+            )
+        db.commit()
+        return True
+    except Exception as state_error:
+        if db is not None:
+            db.rollback()
+        print("Subscription state update warning:", state_error)
         return False
-    user_id = int(row["user_id"])
-    now = datetime.datetime.utcnow()
-    if state in {"active", "authenticated", "charged"}:
-        end = (now + datetime.timedelta(days=30)).isoformat(timespec="seconds") + "Z"
-        cursor.execute(
-            "UPDATE premium SET payment_id=COALESCE(?,payment_id), payment_status='Success', status='Active', start_date=COALESCE(start_date,?), end_date=? WHERE subscription_id=?",
-            (payment_id, now.isoformat(timespec="seconds") + "Z", end, subscription_id),
-        )
-        cursor.execute("UPDATE users SET is_premium=1 WHERE id=?", (user_id,))
-    elif state in {"cancelled", "halted", "paused", "expired"}:
-        cursor.execute(
-            "UPDATE premium SET status=?, payment_status=? WHERE subscription_id=?",
-            (state.title(), state.title(), subscription_id),
-        )
-        # Keep access if a separate active subscription exists.
-        cursor.execute("SELECT 1 FROM premium WHERE user_id=? AND status='Active' AND subscription_id<>? LIMIT 1", (user_id, subscription_id))
-        if cursor.fetchone() is None:
-            cursor.execute("UPDATE users SET is_premium=0 WHERE id=?", (user_id,))
-    else:
-        cursor.execute(
-            "UPDATE premium SET status='Pending', payment_status=? WHERE subscription_id=?",
-            (state.title(), subscription_id),
-        )
-    conn.commit()
-    return True
+    finally:
+        if db is not None:
+            db.close()
+
+
+def _user_has_premium_in_connection(db, user_id, exclude_subscription=None):
+    """Check another unexpired active subscription during cancellation."""
+    sql = "SELECT end_date FROM premium WHERE user_id=? AND lower(status)='active'"
+    params = [int(user_id)]
+    if exclude_subscription:
+        sql += " AND COALESCE(subscription_id,'')<>?"
+        params.append(str(exclude_subscription))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for row in db.execute(sql, tuple(params)).fetchall():
+        end_date = row["end_date"]
+        if not end_date:
+            continue
+        try:
+            end_dt = datetime.datetime.fromisoformat(str(end_date).strip().replace("Z", "+00:00"))
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+            if end_dt.astimezone(datetime.timezone.utc) > now:
+                return True
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return False
 
 
 @app.post("/create-subscription")
 def create_subscription(data: CreateSubscriptionModel):
     if not ensure_active_user(data.user_id):
         return {"status": False, "message": "Account not found or disabled."}
+    if user_has_premium(data.user_id):
+        return {"status": False, "premium": True, "message": "Premium is already active for this account."}
     try:
         key_id, _ = razorpay_credentials()
         # Create a real Razorpay subscription. No client-side amount or payment ID is trusted.
@@ -2952,8 +3015,12 @@ def verify_subscription(data: VerifySubscriptionModel):
     try:
         _, key_secret = razorpay_credentials()
         # Confirm this subscription was created by this backend for this user.
-        cursor.execute("SELECT id FROM premium WHERE user_id=? AND subscription_id=? ORDER BY id DESC LIMIT 1", (data.user_id, data.razorpay_subscription_id))
-        if cursor.fetchone() is None:
+        with sqlite3.connect(DB_PATH, timeout=10) as verify_db:
+            linked = verify_db.execute(
+                "SELECT id FROM premium WHERE user_id=? AND subscription_id=? ORDER BY id DESC LIMIT 1",
+                (int(data.user_id), str(data.razorpay_subscription_id)),
+            ).fetchone()
+        if linked is None:
             return {"status": False, "message": "Subscription does not match this account."}
         expected = hmac.new(
             key_secret.encode("utf-8"),
@@ -3020,16 +3087,18 @@ def buy_premium_disabled():
 def premium_status(user_id: int):
     if not ensure_active_user(user_id):
         return {"status": False, "message": "This profile has been disabled by admin."}
-    cursor.execute("SELECT id FROM users WHERE id=?", (user_id,))
-    user = cursor.fetchone()
-    if user is None:
-        return {"status": False, "message": "User Not Found"}
-    cursor.execute("SELECT plan,status,end_date FROM premium WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,))
-    sub = cursor.fetchone()
-    premium_access = user_has_premium(user_id)
-    if not premium_access:
-        cursor.execute("UPDATE users SET is_premium=0 WHERE id=?", (user_id,))
-        conn.commit()
+    with sqlite3.connect(DB_PATH, timeout=10) as status_db:
+        status_db.row_factory = sqlite3.Row
+        user = status_db.execute("SELECT id FROM users WHERE id=?", (int(user_id),)).fetchone()
+        if user is None:
+            return {"status": False, "message": "User Not Found"}
+        sub = status_db.execute(
+            "SELECT plan,status,end_date FROM premium WHERE user_id=? ORDER BY id DESC LIMIT 1",
+            (int(user_id),),
+        ).fetchone()
+        premium_access = user_has_premium(user_id)
+        if not premium_access:
+            status_db.execute("UPDATE users SET is_premium=0 WHERE id=?", (int(user_id),))
     return {
         "status": True,
         "premium": premium_access,
