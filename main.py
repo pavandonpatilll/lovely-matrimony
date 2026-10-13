@@ -1013,6 +1013,37 @@ def active_user(user_id):
 def ensure_active_user(user_id):
     return active_user(user_id) is not None
 
+
+def user_has_premium(user_id):
+    """Premium access is granted only for a verified active subscription."""
+    try:
+        cursor.execute(
+            "SELECT status, end_date FROM premium WHERE user_id=? ORDER BY id DESC",
+            (int(user_id),),
+        )
+        rows = cursor.fetchall()
+        now = datetime.datetime.utcnow()
+        for row in rows:
+            if str(row["status"] or "").lower() != "active":
+                continue
+            end_date = row["end_date"]
+            if not end_date:
+                return True
+            try:
+                end_text = str(end_date).replace("Z", "+00:00")
+                end_dt = datetime.datetime.fromisoformat(end_text)
+                if end_dt.tzinfo:
+                    end_dt = end_dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                if end_dt > now:
+                    return True
+            except Exception:
+                # A malformed end date must not accidentally grant access.
+                continue
+        return False
+    except Exception as premium_error:
+        print("Premium access check warning:", premium_error)
+        return False
+
 def users_blocked(user_a, user_b):
     cursor.execute("""
         SELECT id FROM blocks
@@ -1723,15 +1754,17 @@ def search_users(data: SearchModel):
 
     users = cursor.fetchall()
     users = [row for row in users if not users_blocked(data.user_id, row["id"])]
+    premium_access = user_has_premium(data.user_id)
+    total_available = len(users)
+    if not premium_access:
+        users = users[:3]
 
     return {
-
         "status": True,
-
-        "total": len(users),
-
+        "premium": premium_access,
+        "total": total_available,
+        "limited": not premium_access and total_available > len(users),
         "profiles": [dict(row) for row in users]
-
     }
 
 # =====================================================
@@ -2001,6 +2034,9 @@ def sent_interests(user_id:int):
 
 def send_message(data: MessageModel):
 
+    if not user_has_premium(data.sender_id):
+        return {"status": False, "premium_required": True, "message": "Chat Premium members ke liye hai. Premium activate karein ❤️"}
+
     if data.sender_id == data.receiver_id:
 
         return{
@@ -2077,6 +2113,8 @@ def send_message(data: MessageModel):
 @app.post("/upload-chat-photo/{sender_id}/{receiver_id}")
 def upload_chat_photo(sender_id:int, receiver_id:int, photo:UploadFile=File(...)):
 
+    if not user_has_premium(sender_id):
+        return {"status":False,"premium_required":True,"message":"Chat photo sharing Premium members ke liye hai."}
     if sender_id == receiver_id:
         return {"status":False,"message":"Invalid User"}
 
@@ -2151,6 +2189,9 @@ def delete_message(message_id:int, user_id:int):
 
 def get_chat(sender_id:int,receiver_id:int):
 
+    if not user_has_premium(sender_id):
+        return {"status": False, "premium_required": True, "message": "Chat Premium members ke liye hai.", "messages": []}
+
     available, reason = ensure_pair_available(sender_id, receiver_id)
     if not available:
         return {"status":True,"blocked":True,"message":reason,"messages":[]}
@@ -2204,6 +2245,7 @@ def get_chat(sender_id:int,receiver_id:int):
 @app.get("/conversations/{user_id}")
 def conversations(user_id:int):
     if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","conversations":[]}
+    if not user_has_premium(user_id): return {"status":True,"premium_required":True,"message":"Chat access ke liye Premium activate karein ❤️","conversations":[]}
     cursor.execute("""
         SELECT DISTINCT
             u.id, u.name, u.photo, u.city
@@ -2978,15 +3020,19 @@ def buy_premium_disabled():
 def premium_status(user_id: int):
     if not ensure_active_user(user_id):
         return {"status": False, "message": "This profile has been disabled by admin."}
-    cursor.execute("SELECT is_premium FROM users WHERE id=?", (user_id,))
+    cursor.execute("SELECT id FROM users WHERE id=?", (user_id,))
     user = cursor.fetchone()
     if user is None:
         return {"status": False, "message": "User Not Found"}
     cursor.execute("SELECT plan,status,end_date FROM premium WHERE user_id=? ORDER BY id DESC LIMIT 1", (user_id,))
     sub = cursor.fetchone()
+    premium_access = user_has_premium(user_id)
+    if not premium_access:
+        cursor.execute("UPDATE users SET is_premium=0 WHERE id=?", (user_id,))
+        conn.commit()
     return {
         "status": True,
-        "premium": bool(user["is_premium"]),
+        "premium": premium_access,
         "subscription": dict(sub) if sub else None,
     }
 
@@ -3564,15 +3610,17 @@ def my_matches(user_id:int):
     )
 
     data=cursor.fetchall()
+    premium_access = user_has_premium(user_id)
+    total_available = len(data)
+    if not premium_access:
+        data = data[:3]
 
     return{
-
         "status":True,
-
-        "total":len(data),
-
+        "premium": premium_access,
+        "total": total_available,
+        "limited": not premium_access and total_available > len(data),
         "matches":[dict(row) for row in data]
-
     }
 
 

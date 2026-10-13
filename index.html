@@ -991,7 +991,7 @@ onclick="showSection('notification');loadNotifications();">
 💌 Interests
 </div>
 
-<div class="menuItem" onclick="showSection('chat');loadConversations();closeMenu();">
+<div class="menuItem" onclick="openChatSection();closeMenu();">
 💬 Chat
 </div>
 
@@ -1570,7 +1570,7 @@ Search
 Matches
 </div>
 
-<div class="navItem" onclick="showSection('chat');loadConversations();">
+<div class="navItem" onclick="openChatSection();">
 <span>💬</span>
 Chat
 </div>
@@ -1774,9 +1774,27 @@ pmQuietRetry("server");
 
 }
 
+async function pmGetPremiumStatus(){
+  const userId = Number(localStorage.getItem("userId") || 0);
+  if(!userId) return {status:false,premium:false};
+  const response = await fetch(PM_API + "/premium-status/" + encodeURIComponent(userId), {cache:"no-store"});
+  const result = await response.json();
+  return result;
+}
+
 async function buyPremium(){
   const userId = Number(localStorage.getItem("userId") || 0);
   if (!userId) { alert("Please login first ❤️"); return; }
+
+  // Clicking Premium again must show Active status instead of creating another subscription.
+  try{
+    const current = await pmGetPremiumStatus();
+    if(current.status && current.premium){
+      alert("✅ Prem Milan Premium ACTIVE hai! ❤️\nAapko all access mil chuka hai.");
+      return;
+    }
+  }catch(e){ console.warn("Could not refresh premium status",e); }
+
   if (typeof Razorpay === "undefined") {
     alert("Razorpay Checkout load nahi hua. Internet check karke dobara try karo.");
     return;
@@ -1817,15 +1835,14 @@ async function buyPremium(){
             alert(verified.message || "Payment verify nahi hua. Payment status check karo.");
             return;
           }
-          alert("❤️ " + (verified.message || "Prem Milan Premium Active!"));
           await checkPremiumStatusAfterPayment();
+          alert("❤️ Premium Active! Ab chat aur sabhi matches ka full access mil gaya.");
+          location.reload();
         } catch (e) {
           alert("Payment hua ho sakta hai, lekin verification response nahi mila. Support se status verify karwao.");
         }
       },
-      modal: {
-        ondismiss: function () { console.log("Razorpay checkout dismissed"); }
-      }
+      modal: { ondismiss: function () { console.log("Razorpay checkout dismissed"); } }
     };
     const checkout = new Razorpay(options);
     checkout.on("payment.failed", function (response) {
@@ -1837,6 +1854,7 @@ async function buyPremium(){
     alert(error.message || "Unable to start subscription. Please try again.");
   }
 }
+
 
 async function checkPremiumStatusAfterPayment(){
   const userId = localStorage.getItem("userId");
@@ -2289,7 +2307,37 @@ function closeChatRealtime(){
   sendTypingState(false);
 }
 
+async function openChatSection(){
+  const userId = Number(localStorage.getItem("userId") || 0);
+  if(!userId){ alert("Please login first ❤️"); return; }
+  try{
+    const access = await pmGetPremiumStatus();
+    if(!access.status || !access.premium){
+      const goPremium = confirm("💬 Chat Premium members ke liye hai.\\n\\n₹15/month plan lekar chat aur all matches unlock karein.\\n\\nPremium plan dekhna hai?");
+      if(goPremium) await buyPremium();
+      return;
+    }
+    showSection("chat");
+    loadConversations();
+  }catch(error){
+    alert("Premium status check nahi ho paaya. Internet check karke dobara try karein.");
+  }
+}
+
 async function openChat(receiverId,name){
+  const userId = Number(localStorage.getItem("userId") || 0);
+  if(!userId){ alert("Please login first ❤️"); return; }
+  try{
+    const access = await pmGetPremiumStatus();
+    if(!access.status || !access.premium){
+      const goPremium = confirm("💬 Chat Premium members ke liye hai.\n\n₹15/month plan lekar unlimited chat aur all matches unlock karein.\n\nPremium plan dekhna hai?");
+      if(goPremium) await buyPremium();
+      return;
+    }
+  }catch(error){
+    alert("Premium status check nahi ho paaya. Internet check karke dobara try karein.");
+    return;
+  }
   const nextReceiver=Number(receiverId);
   closeChatRealtime();
   currentReceiver=nextReceiver;
@@ -2601,10 +2649,13 @@ return;
 }
 
 let html="";
+if(result.limited){
+  html='<div style="background:#fff0f4;border:1px solid #ffd0dc;border-radius:12px;padding:10px;margin-bottom:12px;color:#9f1239;font-weight:700;">Free account: 3 matches only. ❤️ <button class="btn" style="margin-top:8px;padding:9px" onclick="buyPremium()">Unlock all matches with Premium</button></div>';
+}
 
 if(result.matches.length===0){
 
-html="<h3>No Matches Found ❤️</h3>";
+html += "<h3>No Matches Found ❤️</h3>";
 
 }else{
 
@@ -2765,8 +2816,10 @@ try{
     box.innerHTML='<div class="pmInlineState">No matching profiles found ❤️</div>';
     return;
   }
-
-  box.innerHTML=profiles.map(user=>{
+  const limitNotice = result.limited
+    ? '<div style="background:#fff0f4;border:1px solid #ffd0dc;border-radius:12px;padding:10px;margin-bottom:12px;color:#9f1239;font-weight:700;">Free account: 3 profiles only. ❤️ <button class="btn" style="margin-top:8px;padding:9px" onclick="buyPremium()">Unlock all profiles with Premium</button></div>'
+    : '';
+  box.innerHTML=limitNotice+profiles.map(user=>{
     const photo=user.photo?window.PM_API+user.photo:"";
     const safeName=escapeHtml(user.name||"Profile");
     return `<article style="background:#fff;padding:15px;margin-bottom:14px;border-radius:18px;box-shadow:0 6px 20px rgba(0,0,0,.08);text-align:left;">
@@ -3906,6 +3959,15 @@ if(typeof showSection==='function'){if(window.currentSection==="userProfile")sho
 history.pushState({premMilan:true,screen:"home"},"");
 });
 })();
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function(){
+  if(localStorage.getItem("userId")){
+    pmGetPremiumStatus().then(function(s){
+      window.pmPremiumActive=!!(s && s.status && s.premium);
+    }).catch(function(){window.pmPremiumActive=false;});
+  }
+});
 </script>
 </body>
 
