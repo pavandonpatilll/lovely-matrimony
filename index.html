@@ -653,6 +653,19 @@ button,input,select,textarea{font:inherit;max-width:100%;}
 .pmMsg.swiping .pmSwipeHint{opacity:.85}
 .pmMsg{touch-action:pan-y;user-select:none}
 @media(max-width:700px){.pmQuickMenu{position:fixed}.pmChatHeaderName{font-size:16px;max-width:55vw}}
+
+
+.pmPremiumPage{max-width:760px;margin:0 auto;padding:12px 0 28px;color:#241421}
+.pmPremiumTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 2px 18px}
+.pmPremiumBack{border:0;background:#fff0f4;color:#a01842;padding:10px 14px;border-radius:13px;font-weight:800;cursor:pointer}
+.pmPremiumBrand{font-weight:900;letter-spacing:1.8px;font-size:13px;color:#7d2042}.pmPremiumBrand span{color:#d8a23a}
+.pmPremiumHero{position:relative;overflow:hidden;border-radius:28px;padding:30px 24px 26px;background:radial-gradient(circle at 90% 0%,rgba(255,255,255,.22),transparent 35%),linear-gradient(140deg,#39132f 0%,#8d1c52 54%,#d93e68 100%);color:#fff;box-shadow:0 18px 40px rgba(113,22,66,.2)}
+.pmPremiumGlow{position:absolute;width:230px;height:230px;right:-85px;top:-95px;border-radius:50%;background:rgba(255,210,129,.15);filter:blur(2px);pointer-events:none}
+.pmPremiumCrown{font-size:38px;margin-bottom:12px;filter:drop-shadow(0 5px 12px rgba(0,0,0,.2))}.pmPremiumEyebrow{font-size:10px;letter-spacing:2px;font-weight:900;opacity:.82}.pmPremiumHero h1{font-size:clamp(32px,7vw,48px);line-height:1.08;margin:12px 0;font-weight:900;letter-spacing:-1px}.pmPremiumHero h1 em{font-family:Georgia,serif;font-weight:500;color:#ffe1a1}.pmPremiumLead{max-width:410px;color:#ffeaf1;line-height:1.55;font-size:14px}
+.pmPremiumPerks{display:grid;gap:13px;margin-top:25px}.pmPremiumPerks>div{display:flex;gap:12px;align-items:center}.pmPremiumPerks>div>span{display:grid;place-items:center;flex:0 0 28px;height:28px;border-radius:50%;background:#ffe3a6;color:#62203d;font-weight:900}.pmPremiumPerks section{display:grid;gap:3px}.pmPremiumPerks b{font-size:14px}.pmPremiumPerks small{font-size:12px;color:#ffdeea}
+.pmPlanCard{background:#fff;border:1px solid #f5dce5;border-radius:25px;padding:22px;margin:16px 0 12px;box-shadow:0 12px 30px rgba(69,19,42,.08)}.pmPlanHead{display:flex;justify-content:space-between;align-items:center}.pmPlanBadge{font-size:10px;letter-spacing:1.3px;font-weight:900;background:#fff1c9;color:#85520b;padding:7px 10px;border-radius:99px}.pmPlanHeart{color:#d72f62;font-size:24px}.pmPlanName{font-weight:900;font-size:18px;margin-top:14px}.pmPlanPrice{font-size:54px;letter-spacing:-2px;font-weight:900;color:#40152f;margin:3px 0 5px}.pmPlanPrice>span{font-size:28px;vertical-align:top;letter-spacing:0;margin-right:2px}.pmPlanPrice small{font-size:14px;letter-spacing:0;font-weight:600;color:#777}.pmPlanNote{font-size:12px;line-height:1.55;color:#777;margin-bottom:17px}.pmPremiumBuy{width:100%;border:0;border-radius:15px;padding:16px 18px;background:linear-gradient(100deg,#ff416c,#9b245d);color:#fff;font-size:16px;font-weight:900;box-shadow:0 9px 20px rgba(204,38,94,.22);cursor:pointer;transition:transform .15s,filter .15s}.pmPremiumBuy:hover{filter:brightness(1.04);transform:translateY(-1px)}.pmPremiumBuy:disabled{opacity:.6;cursor:wait;transform:none}.pmPremiumBuy span{float:right;font-size:20px;line-height:16px}.pmSecureNote{text-align:center;color:#777;font-size:11px;margin:13px 0 8px}.pmPremiumStatus{text-align:center;color:#7c2347;font-weight:800;font-size:13px;min-height:18px}.pmPremiumStatus.active{color:#14804a}.pmPremiumFineprint{text-align:center;color:#888;font-size:11px;line-height:1.6;padding:4px 14px 12px}
+@media(max-width:600px){.pmPremiumPage{padding-top:4px}.pmPremiumHero{padding:25px 20px;border-radius:23px}.pmPlanCard{padding:19px;border-radius:22px}.pmPremiumPerks{margin-top:21px}}
+
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
@@ -687,6 +700,8 @@ window.PM_API="https://lovely-matrimony-q4vn.onrender.com";
 window.__pmNativeFetch=window.fetch.bind(window);
 window.pmApiFetch=async function(path,options={},retries=2,timeoutMs=12000){
   const base=window.PM_API||"";
+  const method=String(options.method||"GET").toUpperCase();
+  if(method!=="GET"&&method!=="HEAD")retries=0;
   let lastError=null;
   for(let attempt=0;attempt<=retries;attempt++){
     const controller=new AbortController();
@@ -746,18 +761,22 @@ window.pmWakeServer();
     try{url=typeof input==="string"?input:(input&&input.url)||"";}catch(e){}
     const isPmApi=!!url && url.startsWith(window.PM_API||"");
     if(!isPmApi)return nativeFetch(input,init);
+    const method=String((init&&init.method)||(input&&input.method)||"GET").toUpperCase();
+    // Only idempotent reads may be retried. Never replay registration, chat, uploads or payments.
+    const safeToRetry=(method==="GET"||method==="HEAD");
+    const attempts=safeToRetry?2:1;
     let lastError=null;
-    for(let attempt=0;attempt<3;attempt++){
+    for(let attempt=0;attempt<attempts;attempt++){
       try{
         const response=await nativeFetch(input,init);
-        if(response.status>=502 && attempt<2){
-          await new Promise(r=>setTimeout(r,350*(attempt+1)));
+        if(safeToRetry && response.status>=502 && attempt<attempts-1){
+          await new Promise(r=>setTimeout(r,180*(attempt+1)));
           continue;
         }
         return response;
       }catch(error){
         lastError=error;
-        if(attempt<2)await new Promise(r=>setTimeout(r,350*(attempt+1)));
+        if(safeToRetry && attempt<attempts-1)await new Promise(r=>setTimeout(r,180*(attempt+1)));
       }
     }
     throw lastError||new Error("Unable to connect to server.");
@@ -1072,6 +1091,36 @@ font-weight:500;
 
 </div>
 
+</div>
+
+<!-- ================= PREMIUM PAGE ================= -->
+<div id="premiumSection" class="hidden pmPremiumPage">
+  <div class="pmPremiumTop">
+    <button class="pmPremiumBack" type="button" onclick="showSection('home')">← Home</button>
+    <span class="pmPremiumBrand">PREM MILAN <span>✦</span></span>
+  </div>
+  <section class="pmPremiumHero">
+    <div class="pmPremiumGlow"></div>
+    <div class="pmPremiumCrown">👑</div>
+    <p class="pmPremiumEyebrow">A MORE MEANINGFUL CONNECTION</p>
+    <h1>Find your <em>forever.</em></h1>
+    <p class="pmPremiumLead">Unlock more meaningful ways to connect with people who matter.</p>
+    <div class="pmPremiumPerks">
+      <div><span>✓</span><section><b>Explore more profiles</b><small>Go beyond the free profile limit</small></section></div>
+      <div><span>✓</span><section><b>Chat with matches</b><small>Start conversations with confidence</small></section></div>
+      <div><span>✓</span><section><b>Premium access</b><small>Enjoy eligible premium features</small></section></div>
+    </div>
+  </section>
+  <section class="pmPlanCard">
+    <div class="pmPlanHead"><span class="pmPlanBadge">BEST VALUE</span><span class="pmPlanHeart">♥</span></div>
+    <p class="pmPlanName">Prem Milan Premium</p>
+    <div class="pmPlanPrice"><span>₹</span>15 <small>/ month</small></div>
+    <p class="pmPlanNote">Billed through Razorpay subscription checkout. Review the payment details before confirming.</p>
+    <button id="pmPremiumBuyButton" class="pmPremiumBuy" type="button" onclick="startPremiumCheckout()">Unlock Premium · ₹15 <span>→</span></button>
+    <p class="pmSecureNote">🔒 Secure checkout · Payment verification required</p>
+    <div id="pmPremiumPageStatus" class="pmPremiumStatus" aria-live="polite">Checking your membership…</div>
+  </section>
+  <p class="pmPremiumFineprint">Premium access is linked to your account and activates only after the server verifies your payment. Subscription terms and renewal details are shown during checkout.</p>
 </div>
 
 <!-- ================= SEARCH ================= -->
@@ -1783,75 +1832,78 @@ async function pmGetPremiumStatus(){
 }
 
 async function buyPremium(){
-  const userId = Number(localStorage.getItem("userId") || 0);
-  if (!userId) { alert("Please login first ❤️"); return; }
-
-  // Clicking Premium again must show Active status instead of creating another subscription.
+  if(!localStorage.getItem("userId")){alert("Please login first ❤️");return;}
+  showSection("premium");
+  const statusEl=document.getElementById("pmPremiumPageStatus");
+  const button=document.getElementById("pmPremiumBuyButton");
+  if(statusEl){statusEl.className="pmPremiumStatus";statusEl.textContent="Checking your membership…";}
+  if(button)button.disabled=true;
   try{
-    const current = await pmGetPremiumStatus();
+    const current=await pmGetPremiumStatus();
     if(current.status && current.premium){
-      alert("✅ Prem Milan Premium ACTIVE hai! ❤️\nAapko all access mil chuka hai.");
-      return;
+      if(statusEl){statusEl.className="pmPremiumStatus active";statusEl.textContent="✓ Your Premium membership is active on this account.";}
+      if(button){button.textContent="Premium Active ✓";button.disabled=true;}
+    }else{
+      if(statusEl)statusEl.textContent="Your account is on the Free plan. Unlock Premium below.";
+      if(button){button.innerHTML="Unlock Premium · ₹15 <span>→</span>";button.disabled=false;}
     }
-  }catch(e){ console.warn("Could not refresh premium status",e); }
+  }catch(e){
+    if(statusEl)statusEl.textContent="Could not refresh membership right now. You can retry in a moment.";
+    if(button){button.disabled=false;button.innerHTML="Try again · ₹15 <span>→</span>";}
+  }
+}
 
-  if (typeof Razorpay === "undefined") {
-    alert("Razorpay Checkout load nahi hua. Internet check karke dobara try karo.");
+async function startPremiumCheckout(){
+  const userId=Number(localStorage.getItem("userId")||0);
+  const button=document.getElementById("pmPremiumBuyButton");
+  const statusEl=document.getElementById("pmPremiumPageStatus");
+  if(!userId){alert("Please login first ❤️");return;}
+  if(button)button.disabled=true;
+  if(statusEl)statusEl.textContent="Preparing secure checkout…";
+  if(typeof Razorpay==="undefined"){
+    if(statusEl)statusEl.textContent="Payment checkout did not load. Check your internet and try again.";
+    if(button)button.disabled=false;
     return;
   }
-  try {
-    const createResponse = await fetch(PM_API + "/create-subscription", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId })
+  try{
+    const createResponse=await fetch(PM_API+"/create-subscription",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({user_id:userId})
     });
-    const created = await createResponse.json();
-    if (!createResponse.ok || !created.status) {
-      throw new Error(created.message || "Subscription start nahi ho paaya.");
+    const created=await createResponse.json();
+    if(!createResponse.ok||!created.status){
+      if(created.premium){await buyPremium();return;}
+      throw new Error(created.message||"Subscription start nahi ho paaya.");
     }
-    const options = {
-      key: created.key_id,
-      subscription_id: created.subscription_id,
-      name: "Prem Milan",
-      description: "Premium membership - ₹15/month (Test Mode)",
-      image: "",
-      prefill: {},
-      notes: { user_id: String(userId), app: "Prem Milan" },
-      theme: { color: "#ff4d6d" },
-      handler: async function (paymentResult) {
-        try {
-          const verifyResponse = await fetch(PM_API + "/verify-subscription", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              user_id: userId,
-              razorpay_payment_id: paymentResult.razorpay_payment_id,
-              razorpay_subscription_id: paymentResult.razorpay_subscription_id,
-              razorpay_signature: paymentResult.razorpay_signature
-            })
+    const options={
+      key:created.key_id,subscription_id:created.subscription_id,name:"Prem Milan",
+      description:"Premium membership - ₹15/month",
+      notes:{user_id:String(userId),app:"Prem Milan"},theme:{color:"#b32659"},
+      handler:async function(paymentResult){
+        if(statusEl)statusEl.textContent="Payment received. Verifying securely…";
+        try{
+          const verifyResponse=await fetch(PM_API+"/verify-subscription",{
+            method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({user_id:userId,razorpay_payment_id:paymentResult.razorpay_payment_id,razorpay_subscription_id:paymentResult.razorpay_subscription_id,razorpay_signature:paymentResult.razorpay_signature})
           });
-          const verified = await verifyResponse.json();
-          if (!verifyResponse.ok || !verified.status) {
-            alert(verified.message || "Payment verify nahi hua. Payment status check karo.");
-            return;
-          }
+          const verified=await verifyResponse.json();
+          if(!verifyResponse.ok||!verified.status)throw new Error(verified.message||"Payment verification failed.");
           await checkPremiumStatusAfterPayment();
-          alert("❤️ Premium Active! Ab chat aur sabhi matches ka full access mil gaya.");
-          location.reload();
-        } catch (e) {
-          alert("Payment hua ho sakta hai, lekin verification response nahi mila. Support se status verify karwao.");
-        }
+          await buyPremium();
+          if(statusEl){statusEl.className="pmPremiumStatus active";statusEl.textContent="✓ Payment verified. Premium is active for this account.";}
+        }catch(e){
+          if(statusEl)statusEl.textContent="Payment may have completed, but verification is pending. Refresh membership status or contact support before paying again.";
+          alert(e.message||"Payment verification response nahi mila. Please status check karein.");
+        }finally{if(button && !button.disabled)button.disabled=false;}
       },
-      modal: { ondismiss: function () { console.log("Razorpay checkout dismissed"); } }
+      modal:{ondismiss:function(){if(statusEl)statusEl.textContent="Checkout closed. No change was made to your membership.";if(button)button.disabled=false;}}
     };
-    const checkout = new Razorpay(options);
-    checkout.on("payment.failed", function (response) {
-      const msg = response && response.error && response.error.description;
-      alert("Payment complete nahi hua: " + (msg || "Please try again."));
-    });
+    const checkout=new Razorpay(options);
+    checkout.on("payment.failed",function(response){const msg=response&&response.error&&response.error.description;if(statusEl)statusEl.textContent="Payment failed. You can safely try again.";alert("Payment complete nahi hua: "+(msg||"Please try again."));if(button)button.disabled=false;});
     checkout.open();
-  } catch (error) {
-    alert(error.message || "Unable to start subscription. Please try again.");
+  }catch(error){
+    if(statusEl)statusEl.textContent=error.message||"Unable to start checkout. Please try again.";
+    if(button)button.disabled=false;
   }
 }
 
@@ -3149,7 +3201,7 @@ function showSection(page){
 window.currentSection=page;
 
 const sections=[
-"homeSection","searchSection","matchesSection","chatSection",
+"homeSection","searchSection","matchesSection","chatSection","premiumSection",
 "profileSection","userProfileSection","interestSection","editProfileSection",
 "favoriteSection","notificationSection","settingsSection"
 ];

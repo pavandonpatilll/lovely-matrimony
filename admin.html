@@ -134,12 +134,32 @@ background:#dc3545;
 
 </style>
 
+<style>
+#pmAdminGate{position:fixed;inset:0;z-index:100000;background:linear-gradient(135deg,#40152f,#b32659);display:flex;align-items:center;justify-content:center;padding:18px}
+#pmAdminGate .gate-card{width:min(100%,410px);background:#fff;border-radius:24px;padding:28px;box-shadow:0 25px 80px #1b071b55}
+#pmAdminGate h2{color:#a51f50;margin-bottom:8px}#pmAdminGate p{color:#666;font-size:13px;line-height:1.5;margin-bottom:18px}
+#pmAdminGate input{width:100%;padding:13px;margin:7px 0;border:1px solid #ddd;border-radius:11px;font-size:16px}
+#pmAdminGate button{width:100%;padding:13px;background:#ff4d6d;border:0;border-radius:11px;color:#fff;font-weight:800;margin-top:10px}
+#pmAdminGateMsg{min-height:18px;color:#b42348;font-size:13px;margin-top:10px}
+#pmAdminLogout{background:#5a183e;padding:9px 14px;margin:8px;border-radius:9px}
+</style>
 </head>
 
 <body>
+<div id="pmAdminGate">
+ <form class="gate-card" onsubmit="event.preventDefault();pmAdminLogin()">
+  <div style="font-size:34px;margin-bottom:10px">❤️</div><h2>Prem Milan Admin</h2>
+  <p>Sign in with your admin credentials to securely open the dashboard.</p>
+  <input id="pmAdminUsername" autocomplete="username" placeholder="Admin username" required>
+  <input id="pmAdminPassword" type="password" autocomplete="current-password" placeholder="Admin password" required>
+  <button id="pmAdminLoginButton" type="submit">Sign in securely</button>
+  <div id="pmAdminGateMsg" aria-live="polite"></div>
+ </form>
+</div>
+
 
 <div class="header">
-❤️  Prem Milan Admin Panel
+❤️  Prem Milan Admin Panel <button id="pmAdminLogout" onclick="pmAdminLogout()" style="float:right">Logout</button>
 </div>
 
 <p id="lastUpdate"
@@ -993,6 +1013,37 @@ async function makePremium(userId){
 }
 
 const API="https://lovely-matrimony-q4vn.onrender.com";
+const pmAdminNativeFetch=window.fetch.bind(window);
+window.fetch=async function(input,init={}){
+  let url=typeof input==="string"?input:(input&&input.url)||"";
+  if(url.startsWith(API+"/admin/")){
+    const headers=new Headers(init.headers||(input instanceof Request?input.headers:undefined));
+    const token=sessionStorage.getItem("pmAdminToken")||"";
+    if(token)headers.set("Authorization","Bearer "+token);
+    init={...init,headers};
+  }
+  const response=await pmAdminNativeFetch(input,init);
+  if(response.status===401 && url.startsWith(API+"/admin/")){
+    sessionStorage.removeItem("pmAdminToken");
+    const gate=document.getElementById("pmAdminGate");if(gate)gate.style.display="flex";
+  }
+  return response;
+};
+async function pmAdminLogin(){
+ const button=document.getElementById("pmAdminLoginButton"),msg=document.getElementById("pmAdminGateMsg");
+ const username=document.getElementById("pmAdminUsername").value.trim(),password=document.getElementById("pmAdminPassword").value;
+ if(!username||!password){msg.textContent="Enter username and password.";return;}
+ button.disabled=true;button.textContent="Signing in…";msg.textContent="";
+ try{
+  const r=await pmAdminNativeFetch(API+"/admin-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+  const d=await r.json();if(!r.ok||!d.status||!d.token)throw new Error(d.message||"Sign in failed.");
+  sessionStorage.setItem("pmAdminToken",d.token);document.getElementById("pmAdminGate").style.display="none";
+  await loadUsers(); await loadReports(); await loadMatches(); await loadBlockedUsers();
+ }catch(e){msg.textContent=e.message||"Could not sign in. Check server and credentials.";}
+ finally{button.disabled=false;button.textContent="Sign in securely";}
+}
+function pmAdminLogout(){sessionStorage.removeItem("pmAdminToken");document.getElementById("pmAdminGate").style.display="flex";}
+
 
 async function loadUsers(){
 
@@ -1122,18 +1173,14 @@ onclick="deleteUser(${user.id})">
 
 }
 
-loadUsers();
-loadReports();
-loadMatches();
-loadBlockedUsers();
-
-setInterval(function(){
-
-loadUsers();
-loadReports();
-loadBlockedUsers();
-
-},30000);
+// Dashboard requests start only after successful admin authentication.
+let pmAdminRefreshBusy=false;
+setInterval(async function(){
+ if(!sessionStorage.getItem("pmAdminToken")||pmAdminRefreshBusy)return;
+ pmAdminRefreshBusy=true;
+ try{await loadUsers();await loadReports();await loadBlockedUsers();}
+ finally{pmAdminRefreshBusy=false;}
+},60000);
 
 
 </script>

@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi import UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +11,7 @@ import uuid
 import os
 import json
 import threading
+import time
 import datetime
 import secrets
 import hmac
@@ -31,6 +33,30 @@ app = FastAPI(
     title="Prem Milan API",
     version="1.1"
 )
+
+# Admin API sessions are short-lived and issued only after /admin-login succeeds.
+_ADMIN_SESSIONS = {}
+_ADMIN_SESSION_LOCK = threading.Lock()
+_ADMIN_SESSION_TTL = 12 * 60 * 60
+
+@app.middleware("http")
+async def protect_admin_api(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/admin/"):
+        auth_header = request.headers.get("authorization", "")
+        token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+        now = time.time()
+        valid = False
+        if token:
+            with _ADMIN_SESSION_LOCK:
+                expires = _ADMIN_SESSIONS.get(token, 0)
+                if expires > now:
+                    valid = True
+                else:
+                    _ADMIN_SESSIONS.pop(token, None)
+        if not valid:
+            return JSONResponse(status_code=401, content={"status": False, "message": "Admin login required. Please sign in again."})
+    return await call_next(request)
 
 # Razorpay TEST MODE configuration. Keep the Plan ID in code as requested.
 # RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in Render environment variables.
@@ -381,9 +407,13 @@ DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 conn = sqlite3.connect(
     DB_PATH,
+    timeout=20,
     check_same_thread=False
 )
-
+# WAL improves read/write coexistence; busy_timeout reduces transient locked-db errors.
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA synchronous=NORMAL")
+conn.execute("PRAGMA busy_timeout=20000")
 conn.row_factory = sqlite3.Row
 
 cursor = conn.cursor()
@@ -751,6 +781,10 @@ except Exception:
     pass
 try:
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_premium_subscription_id ON premium(subscription_id)")
+except Exception:
+    pass
+try:
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_premium_user_status_expiry ON premium(user_id,status,end_date)")
 except Exception:
     pass
 
@@ -3162,11 +3196,17 @@ def admin_login(data:AdminLoginModel):
         "Prem Milan Admin"
     )
 
+    token = secrets.token_urlsafe(32)
+    with _ADMIN_SESSION_LOCK:
+        _ADMIN_SESSIONS[token] = time.time() + _ADMIN_SESSION_TTL
+
     firebase_sync_async()
 
     return{
 
         "status":True,
+        "token": token,
+        "expires_in": _ADMIN_SESSION_TTL,
 
         "message":"Admin Login Successful",
         "firebase_enabled": bool(firebase_admin_user),
@@ -3192,7 +3232,7 @@ def admin_dashboard():
     cursor.execute("SELECT COUNT(*) FROM messages")
     total_messages=cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) FROM premium WHERE status='Active'")
+    cursor.execute("SELECT COUNT(DISTINCT user_id) FROM premium WHERE lower(status)='active' AND end_date IS NOT NULL AND julianday(end_date) > julianday('now')")
     premium_users=cursor.fetchone()[0]
 
     return{
@@ -3231,7 +3271,11 @@ def admin_users():
         city,
         photo,
         is_verified,
-        is_premium,
+        CASE WHEN EXISTS (
+            SELECT 1 FROM premium p
+            WHERE p.user_id=users.id AND lower(p.status)='active'
+              AND p.end_date IS NOT NULL AND julianday(p.end_date) > julianday('now')
+        ) THEN 1 ELSE 0 END AS is_premium,
         created_at,
         is_deleted,
         deleted_at
@@ -3322,7 +3366,11 @@ def admin_premium_users():
         city,
         photo
         FROM users
-        WHERE is_premium=1
+        WHERE EXISTS (
+            SELECT 1 FROM premium p
+            WHERE p.user_id=users.id AND lower(p.status)='active'
+              AND p.end_date IS NOT NULL AND julianday(p.end_date) > julianday('now')
+        )
         ORDER BY id DESC
     """)
 
@@ -3342,21 +3390,21 @@ def admin_premium_users():
 @app.post("/admin/make-premium/{user_id}")
 def make_premium(user_id: int):
 
+    if not ensure_active_user(user_id):
+        return {"status": False, "message": "User not found or disabled."}
+    now = datetime.datetime.now(datetime.timezone.utc)
+    end = now + datetime.timedelta(days=30)
     cursor.execute(
-        """
-        UPDATE users
-        SET is_premium=1
-        WHERE id=?
-        """,
-        (user_id,)
+        """INSERT INTO premium(user_id,plan,amount,payment_id,payment_status,start_date,end_date,status)
+           VALUES(?,?,?,?,?,?,?,?)""",
+        (user_id, "Admin complimentary Premium", 0, "ADMIN-GRANT", "Comped",
+         now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+         end.isoformat(timespec="seconds").replace("+00:00", "Z"), "Active")
     )
-
+    cursor.execute("UPDATE users SET is_premium=1 WHERE id=?", (user_id,))
     conn.commit()
-
-    return {
-        "status": True,
-        "message": "User is now Premium 👑"
-    }
+    firebase_sync_async()
+    return {"status": True, "message": "Premium granted to this user for 30 days 👑"}
 
 # =====================================================
 # SEND NOTIFICATION TO ALL USERS
