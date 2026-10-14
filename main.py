@@ -14,7 +14,6 @@ import threading
 import time
 import datetime
 import secrets
-import hmac
 import urllib.request
 import urllib.error
 from urllib.parse import quote, unquote
@@ -58,46 +57,15 @@ async def protect_admin_api(request: Request, call_next):
             return JSONResponse(status_code=401, content={"status": False, "message": "Admin login required. Please sign in again."})
     return await call_next(request)
 
-# Razorpay TEST MODE configuration. Keep the Plan ID in code as requested.
-# RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in Render environment variables.
-RAZORPAY_PLAN_ID = "plan_TnqNIdEEOuIwpi"
-RAZORPAY_API_BASE = "https://api.razorpay.com/v1"
+# Google Play Billing production configuration.
+# Set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON in Render to the JSON key of a service account
+# granted access to the app in Play Console. Never put this key in the frontend.
+GOOGLE_PLAY_PACKAGE_NAME = os.getenv("GOOGLE_PLAY_PACKAGE_NAME", "com.mycompany.matrimony").strip()
+GOOGLE_PLAY_PRODUCT_ID = "prem_milan_premium"
+GOOGLE_PLAY_BASE_PLAN_ID = "monthly-15-inr"
 PREMIUM_AMOUNT_INR = 15
 PREMIUM_PLAN_LABEL = "Prem Milan Premium Monthly"
 
-
-def razorpay_credentials():
-    key_id = os.getenv("RAZORPAY_KEY_ID", "").strip()
-    key_secret = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
-    if not key_id or not key_secret:
-        raise RuntimeError("Razorpay Test Mode keys are not configured in Render.")
-    return key_id, key_secret
-
-
-def razorpay_api_request(path, payload):
-    key_id, key_secret = razorpay_credentials()
-    body = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        RAZORPAY_API_BASE + path,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": "Basic " + __import__("base64").b64encode(
-                f"{key_id}:{key_secret}".encode("utf-8")
-            ).decode("ascii"),
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        try:
-            details = json.loads(exc.read().decode("utf-8"))
-            description = details.get("error", {}).get("description", "Razorpay API request failed")
-        except Exception:
-            description = "Razorpay API request failed"
-        raise ValueError(description)
 
 # =====================================================
 # CORS
@@ -2906,215 +2874,169 @@ def my_notifications(user_id: int):
     }
 
 # =====================================================
-# RAZORPAY SUBSCRIPTIONS (TEST MODE)
+# GOOGLE PLAY BILLING SUBSCRIPTIONS
 # =====================================================
 
-class CreateSubscriptionModel(BaseModel):
+class GooglePlaySubscriptionVerifyModel(BaseModel):
     user_id: int
+    product_id: str
+    purchase_token: str
 
 
-class VerifySubscriptionModel(BaseModel):
-    user_id: int
-    razorpay_payment_id: str
-    razorpay_subscription_id: str
-    razorpay_signature: str
-
-
-def set_subscription_state(subscription_id, state, payment_id=None):
-    """Update only the subscription row tied to the owning user."""
-    db = None
-    try:
-        db = sqlite3.connect(DB_PATH, timeout=10)
-        db.row_factory = sqlite3.Row
-        row = db.execute(
-            "SELECT user_id FROM premium WHERE subscription_id=? ORDER BY id DESC LIMIT 1",
-            (str(subscription_id),),
-        ).fetchone()
-        if row is None:
-            return False
-
-        user_id = int(row["user_id"])
-        normalized = str(state or "").strip().lower()
-        now = datetime.datetime.now(datetime.timezone.utc)
-        if normalized in {"active", "authenticated", "charged", "resumed"}:
-            # Start/renew this user's own 30-day access window.
-            end = (now + datetime.timedelta(days=30)).isoformat(timespec="seconds").replace("+00:00", "Z")
-            db.execute(
-                """UPDATE premium
-                   SET payment_id=COALESCE(?,payment_id),
-                       payment_status='Success', status='Active',
-                       start_date=COALESCE(start_date,?), end_date=?
-                   WHERE subscription_id=? AND user_id=?""",
-                (
-                    payment_id,
-                    now.isoformat(timespec="seconds").replace("+00:00", "Z"),
-                    end,
-                    str(subscription_id),
-                    user_id,
-                ),
-            )
-            db.execute("UPDATE users SET is_premium=1 WHERE id=?", (user_id,))
-        elif normalized in {"cancelled", "halted", "paused", "expired", "completed"}:
-            db.execute(
-                """UPDATE premium SET status=?, payment_status=?
-                   WHERE subscription_id=? AND user_id=?""",
-                (normalized.title(), normalized.title(), str(subscription_id), user_id),
-            )
-            # This flag is display-only; entitlement is checked from premium rows.
-            db.execute("UPDATE users SET is_premium=? WHERE id=?",
-                       (1 if _user_has_premium_in_connection(db, user_id, exclude_subscription=str(subscription_id)) else 0, user_id))
-        else:
-            db.execute(
-                """UPDATE premium SET status='Pending', payment_status=?
-                   WHERE subscription_id=? AND user_id=?""",
-                (normalized.title() or "Pending", str(subscription_id), user_id),
-            )
-        db.commit()
-        return True
-    except Exception as state_error:
-        if db is not None:
-            db.rollback()
-        print("Subscription state update warning:", state_error)
-        return False
-    finally:
-        if db is not None:
-            db.close()
-
-
-def _user_has_premium_in_connection(db, user_id, exclude_subscription=None):
-    """Check another unexpired active subscription during cancellation."""
-    sql = "SELECT end_date FROM premium WHERE user_id=? AND lower(status)='active'"
-    params = [int(user_id)]
-    if exclude_subscription:
-        sql += " AND COALESCE(subscription_id,'')<>?"
-        params.append(str(exclude_subscription))
-    now = datetime.datetime.now(datetime.timezone.utc)
-    for row in db.execute(sql, tuple(params)).fetchall():
-        end_date = row["end_date"]
-        if not end_date:
-            continue
-        try:
-            end_dt = datetime.datetime.fromisoformat(str(end_date).strip().replace("Z", "+00:00"))
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-            if end_dt.astimezone(datetime.timezone.utc) > now:
-                return True
-        except (TypeError, ValueError, OverflowError):
-            continue
-    return False
-
-
-@app.post("/create-subscription")
-def create_subscription(data: CreateSubscriptionModel):
-    if not ensure_active_user(data.user_id):
-        return {"status": False, "message": "Account not found or disabled."}
-    if user_has_premium(data.user_id):
-        return {"status": False, "premium": True, "message": "Premium is already active for this account."}
-    try:
-        key_id, _ = razorpay_credentials()
-        # Create a real Razorpay subscription. No client-side amount or payment ID is trusted.
-        sub = razorpay_api_request("/subscriptions", {
-            "plan_id": RAZORPAY_PLAN_ID,
-            "customer_notify": 1,
-            "quantity": 1,
-            "total_count": 12,
-            "notes": {"prem_milan_user_id": str(data.user_id), "app": "Prem Milan"},
-        })
-        subscription_id = str(sub.get("id", ""))
-        if not subscription_id:
-            raise ValueError("Razorpay did not return a subscription ID.")
-        cursor.execute(
-            "INSERT INTO premium(user_id,plan,amount,payment_id,payment_status,start_date,end_date,status,subscription_id) VALUES(?,?,?,?,?,?,?,?,?)",
-            (data.user_id, PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR, "", "Pending", None, None, "Pending", subscription_id),
+def google_play_subscription_details(purchase_token: str):
+    """Fetch authoritative subscription state from the Google Play Developer API."""
+    raw_service_account = os.getenv("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON", "").strip()
+    if not raw_service_account:
+        raise RuntimeError(
+            "Google Play verification is not configured yet. Add GOOGLE_PLAY_SERVICE_ACCOUNT_JSON in Render."
         )
-        conn.commit()
+    try:
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+    except Exception as exc:
+        raise RuntimeError(
+            "Google authentication libraries are unavailable. Ensure firebase-admin/google-auth is installed."
+        ) from exc
+
+    try:
+        service_info = json.loads(raw_service_account)
+        credentials_obj = service_account.Credentials.from_service_account_info(
+            service_info,
+            scopes=["https://www.googleapis.com/auth/androidpublisher"],
+        )
+        credentials_obj.refresh(GoogleAuthRequest())
+        token = credentials_obj.token
+        if not token:
+            raise RuntimeError("Google Play API authentication failed.")
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        print("Google Play service account authentication error:", str(exc))
+        raise RuntimeError("Google Play API authentication failed. Check the service-account configuration.") from exc
+
+    encoded_token = __import__("urllib.parse", fromlist=["quote"]).quote(purchase_token, safe="")
+    url = (
+        "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/"
+        + __import__("urllib.parse", fromlist=["quote"]).quote(GOOGLE_PLAY_PACKAGE_NAME, safe="")
+        + "/purchases/subscriptionsv2/tokens/" + encoded_token
+    )
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            details = json.loads(exc.read().decode("utf-8"))
+            api_message = details.get("error", {}).get("message", "Google Play rejected the purchase token.")
+        except Exception:
+            api_message = "Google Play rejected the purchase token."
+        print("Google Play subscription lookup failed:", exc.code, api_message)
+        if exc.code in (400, 401, 403, 404):
+            raise ValueError("Google Play could not verify this purchase. Check the Play Console API access and purchase token.")
+        raise RuntimeError("Google Play verification is temporarily unavailable.")
+    except Exception as exc:
+        print("Google Play API request error:", str(exc))
+        raise RuntimeError("Could not reach Google Play to verify the subscription.")
+
+
+@app.post("/verify-google-play-subscription")
+def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
+    """Activate Premium only after the Google Play Developer API verifies the purchase."""
+    if not ensure_active_user(data.user_id):
+        raise HTTPException(status_code=404, detail="Account not found or disabled.")
+    product_id = str(data.product_id or "").strip()
+    purchase_token = str(data.purchase_token or "").strip()
+    if product_id != GOOGLE_PLAY_PRODUCT_ID:
+        raise HTTPException(status_code=400, detail="This Google Play product is not the Prem Milan Premium subscription.")
+    if not purchase_token or len(purchase_token) > 4096:
+        raise HTTPException(status_code=400, detail="A valid Google Play purchase token is required.")
+
+    try:
+        details = google_play_subscription_details(purchase_token)
+        state = str(details.get("subscriptionState", ""))
+        line_items = details.get("lineItems") or []
+        matching_items = [
+            item for item in line_items
+            if str(item.get("productId", "")) == GOOGLE_PLAY_PRODUCT_ID
+            and str((item.get("offerDetails") or {}).get("basePlanId", "")) == GOOGLE_PLAY_BASE_PLAN_ID
+        ]
+        if not matching_items:
+            return {"status": False, "premium": False, "message": "Google Play purchase does not match the configured Prem Milan ₹15 monthly plan."}
+
+        expiry_values = [str(item.get("expiryTime", "")) for item in matching_items if item.get("expiryTime")]
+        if not expiry_values:
+            return {"status": False, "premium": False, "message": "Google Play did not return a valid subscription expiry. Premium was not activated."}
+        expiry_text = max(expiry_values)
+        try:
+            expiry_dt = datetime.datetime.fromisoformat(expiry_text.replace("Z", "+00:00"))
+            if expiry_dt.tzinfo is None:
+                expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
+            expiry_dt = expiry_dt.astimezone(datetime.timezone.utc)
+        except (TypeError, ValueError, OverflowError):
+            return {"status": False, "premium": False, "message": "Google Play returned an invalid expiry date."}
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        # A canceled subscription remains entitled until its paid-through expiry.
+        allowed_states = {
+            "SUBSCRIPTION_STATE_ACTIVE",
+            "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+            "SUBSCRIPTION_STATE_CANCELED",
+        }
+        if state not in allowed_states or expiry_dt <= now:
+            return {"status": False, "premium": False, "message": "This Google Play subscription is not currently entitled to Premium."}
+
+        with sqlite3.connect(DB_PATH, timeout=10) as verify_db:
+            verify_db.row_factory = sqlite3.Row
+            existing = verify_db.execute(
+                "SELECT id,user_id FROM premium WHERE subscription_id=? ORDER BY id DESC LIMIT 1",
+                (purchase_token,),
+            ).fetchone()
+            if existing and int(existing["user_id"]) != int(data.user_id):
+                return {"status": False, "premium": False, "message": "This Google Play purchase is already linked to another Prem Milan account."}
+
+            if existing:
+                verify_db.execute(
+                    """UPDATE premium SET plan=?,amount=?,payment_id=?,payment_status=?,start_date=COALESCE(start_date,?),
+                       end_date=?,status=? WHERE id=?""",
+                    (
+                        PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR, "google-play:" + product_id,
+                        state, now.isoformat(), expiry_dt.isoformat(), "active", int(existing["id"]),
+                    ),
+                )
+            else:
+                verify_db.execute(
+                    """INSERT INTO premium
+                       (user_id,plan,amount,payment_id,payment_status,start_date,end_date,status,subscription_id)
+                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (
+                        int(data.user_id), PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR,
+                        "google-play:" + product_id, state, now.isoformat(),
+                        expiry_dt.isoformat(), "active", purchase_token,
+                    ),
+                )
+            verify_db.execute("UPDATE users SET is_premium=1 WHERE id=?", (int(data.user_id),))
+            verify_db.commit()
+
+        firebase_sync_async()
         return {
             "status": True,
-            "key_id": key_id,
-            "subscription_id": subscription_id,
-            "plan": PREMIUM_PLAN_LABEL,
-            "amount_inr": PREMIUM_AMOUNT_INR,
-            "message": "Subscription created. Complete checkout to activate Premium.",
+            "premium": True,
+            "product_id": GOOGLE_PLAY_PRODUCT_ID,
+            "expiry_time": expiry_dt.isoformat(),
+            "message": "Google Play subscription verified. Prem Milan Premium activated! ❤️",
         }
+    except ValueError as exc:
+        return {"status": False, "premium": False, "message": str(exc)}
+    except RuntimeError as exc:
+        # Fail closed: missing API access must never grant membership.
+        raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
-        conn.rollback()
-        print("Razorpay create subscription error:", str(exc))
-        return {"status": False, "message": str(exc) if isinstance(exc, (RuntimeError, ValueError)) else "Could not create subscription. Check Render Razorpay Test Mode settings."}
-
-
-@app.post("/verify-subscription")
-def verify_subscription(data: VerifySubscriptionModel):
-    if not ensure_active_user(data.user_id):
-        return {"status": False, "message": "Account not found or disabled."}
-    try:
-        _, key_secret = razorpay_credentials()
-        # Confirm this subscription was created by this backend for this user.
-        with sqlite3.connect(DB_PATH, timeout=10) as verify_db:
-            linked = verify_db.execute(
-                "SELECT id FROM premium WHERE user_id=? AND subscription_id=? ORDER BY id DESC LIMIT 1",
-                (int(data.user_id), str(data.razorpay_subscription_id)),
-            ).fetchone()
-        if linked is None:
-            return {"status": False, "message": "Subscription does not match this account."}
-        expected = hmac.new(
-            key_secret.encode("utf-8"),
-            f"{data.razorpay_payment_id}|{data.razorpay_subscription_id}".encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(expected, data.razorpay_signature):
-            return {"status": False, "message": "Payment signature verification failed."}
-        set_subscription_state(data.razorpay_subscription_id, "authenticated", data.razorpay_payment_id)
-        firebase_sync_async()
-        return {"status": True, "premium": True, "message": "Payment verified. Premium activated! ❤️"}
-    except Exception as exc:
-        print("Razorpay verification error:", str(exc))
-        return {"status": False, "message": "Could not verify payment. Please contact support if payment was deducted."}
-
-
-@app.post("/razorpay-webhook")
-async def razorpay_webhook(request: Request):
-    """Optional lifecycle webhook; configure this URL in Razorpay Dashboard."""
-    raw_body = await request.body()
-    webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "").strip()
-    signature = request.headers.get("X-Razorpay-Signature", "")
-    if not webhook_secret:
-        return {"status": False, "message": "Webhook secret is not configured."}
-    expected = hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    if not signature or not hmac.compare_digest(expected, signature):
-        raise HTTPException(status_code=400, detail="Invalid webhook signature")
-    try:
-        event_data = json.loads(raw_body.decode("utf-8"))
-        event = event_data.get("event", "")
-        payload = event_data.get("payload", {})
-        sub_obj = (payload.get("subscription", {}) or {}).get("entity", {}) or {}
-        payment_obj = (payload.get("payment", {}) or {}).get("entity", {}) or {}
-        subscription_id = sub_obj.get("id") or payment_obj.get("subscription_id")
-        payment_id = payment_obj.get("id")
-        event_map = {
-            "subscription.activated": "active",
-            "subscription.charged": "charged",
-            "subscription.authenticated": "authenticated",
-            "subscription.pending": "pending",
-            "subscription.halted": "halted",
-            "subscription.cancelled": "cancelled",
-            "subscription.paused": "paused",
-            "subscription.resumed": "active",
-            "subscription.completed": "expired",
-        }
-        state = event_map.get(event)
-        if subscription_id and state:
-            set_subscription_state(subscription_id, state, payment_id)
-            firebase_sync_async()
-        return {"status": True}
-    except Exception as exc:
-        print("Razorpay webhook processing error:", str(exc))
-        raise HTTPException(status_code=400, detail="Webhook processing failed")
-
-
-@app.post("/buy-premium")
-def buy_premium_disabled():
-    # Prevent the old insecure endpoint from activating Premium without payment verification.
-    raise HTTPException(status_code=410, detail="Fake payment activation is disabled. Use /create-subscription and /verify-subscription.")
+        print("Google Play subscription verification error:", str(exc))
+        raise HTTPException(status_code=500, detail="Could not verify the Google Play subscription. Premium was not activated.")
 
 
 @app.get("/premium-status/{user_id}")

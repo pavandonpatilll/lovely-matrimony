@@ -691,7 +691,6 @@ html.pmOffline::after{
   box-shadow:0 6px 20px rgba(0,0,0,.18);pointer-events:none;
 }
 </style>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 
 <body>
@@ -1115,12 +1114,12 @@ font-weight:500;
     <div class="pmPlanHead"><span class="pmPlanBadge">BEST VALUE</span><span class="pmPlanHeart">♥</span></div>
     <p class="pmPlanName">Prem Milan Premium</p>
     <div class="pmPlanPrice"><span>₹</span>15 <small>/ month</small></div>
-    <p class="pmPlanNote">Billed through Razorpay subscription checkout. Review the payment details before confirming.</p>
+    <p class="pmPlanNote">Auto-renewing subscription billed securely by Google Play. Manage or cancel anytime in Google Play subscriptions.</p>
     <button id="pmPremiumBuyButton" class="pmPremiumBuy" type="button" onclick="startPremiumCheckout()">Unlock Premium · ₹15 <span>→</span></button>
-    <p class="pmSecureNote">🔒 Secure checkout · Payment verification required</p>
+    <p class="pmSecureNote">🔒 Google Play Billing · Server verification required</p>
     <div id="pmPremiumPageStatus" class="pmPremiumStatus" aria-live="polite">Checking your membership…</div>
   </section>
-  <p class="pmPremiumFineprint">Premium access is linked to your account and activates only after the server verifies your payment. Subscription terms and renewal details are shown during checkout.</p>
+  <p class="pmPremiumFineprint">Premium access is linked to your account and activates only after the server verifies your payment. ₹15/month, auto-renewing through Google Play. You can manage or cancel the subscription in Google Play.</p>
 </div>
 
 <!-- ================= SEARCH ================= -->
@@ -1859,52 +1858,88 @@ async function startPremiumCheckout(){
   const statusEl=document.getElementById("pmPremiumPageStatus");
   if(!userId){alert("Please login first ❤️");return;}
   if(button)button.disabled=true;
-  if(statusEl)statusEl.textContent="Preparing secure checkout…";
-  if(typeof Razorpay==="undefined"){
-    if(statusEl)statusEl.textContent="Payment checkout did not load. Check your internet and try again.";
+  if(statusEl)statusEl.textContent="Opening Google Play subscription…";
+
+  // Google Play Billing is provided by the Android app's native BillingClient bridge.
+  // A website/browser must never simulate a successful purchase.
+  const billing=window.PremMilanBilling;
+  if(!billing || typeof billing.launchSubscription!=="function"){
+    if(statusEl)statusEl.textContent="Google Play Billing is available in the official Android app. Please open Prem Milan from your installed app.";
     if(button)button.disabled=false;
     return;
   }
   try{
-    const createResponse=await fetch(PM_API+"/create-subscription",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({user_id:userId})
-    });
-    const created=await createResponse.json();
-    if(!createResponse.ok||!created.status){
-      if(created.premium){await buyPremium();return;}
-      throw new Error(created.message||"Subscription start nahi ho paaya.");
-    }
-    const options={
-      key:created.key_id,subscription_id:created.subscription_id,name:"Prem Milan",
-      description:"Premium membership - ₹15/month",
-      notes:{user_id:String(userId),app:"Prem Milan"},theme:{color:"#b32659"},
-      handler:async function(paymentResult){
-        if(statusEl)statusEl.textContent="Payment received. Verifying securely…";
-        try{
-          const verifyResponse=await fetch(PM_API+"/verify-subscription",{
-            method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({user_id:userId,razorpay_payment_id:paymentResult.razorpay_payment_id,razorpay_subscription_id:paymentResult.razorpay_subscription_id,razorpay_signature:paymentResult.razorpay_signature})
-          });
-          const verified=await verifyResponse.json();
-          if(!verifyResponse.ok||!verified.status)throw new Error(verified.message||"Payment verification failed.");
-          await checkPremiumStatusAfterPayment();
-          await buyPremium();
-          if(statusEl){statusEl.className="pmPremiumStatus active";statusEl.textContent="✓ Payment verified. Premium is active for this account.";}
-        }catch(e){
-          if(statusEl)statusEl.textContent="Payment may have completed, but verification is pending. Refresh membership status or contact support before paying again.";
-          alert(e.message||"Payment verification response nahi mila. Please status check karein.");
-        }finally{if(button && !button.disabled)button.disabled=false;}
-      },
-      modal:{ondismiss:function(){if(statusEl)statusEl.textContent="Checkout closed. No change was made to your membership.";if(button)button.disabled=false;}}
-    };
-    const checkout=new Razorpay(options);
-    checkout.on("payment.failed",function(response){const msg=response&&response.error&&response.error.description;if(statusEl)statusEl.textContent="Payment failed. You can safely try again.";alert("Payment complete nahi hua: "+(msg||"Please try again."));if(button)button.disabled=false;});
-    checkout.open();
+    billing.launchSubscription("prem_milan_premium");
+    if(statusEl)statusEl.textContent="Google Play is opening. Complete the subscription there; Premium activates after server verification.";
   }catch(error){
-    if(statusEl)statusEl.textContent=error.message||"Unable to start checkout. Please try again.";
+    if(statusEl)statusEl.textContent=(error&&error.message)||"Could not open Google Play Billing. Please try again.";
     if(button)button.disabled=false;
   }
+}
+
+// Called by MainActivity after BillingClient returns a purchase. MainActivity should call:
+// webView.evaluateJavascript("window.onGooglePlayPurchaseResult("+JSONObject.quote(json)+")", null)
+window.onGooglePlayPurchaseResult=async function(raw){
+  const button=document.getElementById("pmPremiumBuyButton");
+  const statusEl=document.getElementById("pmPremiumPageStatus");
+  const userId=Number(localStorage.getItem("userId")||0);
+  let purchase;
+  try{purchase=typeof raw==="string"?JSON.parse(raw):raw;}catch(e){purchase=null;}
+  if(!purchase){
+    if(statusEl)statusEl.textContent="Could not read Google Play purchase result. Please retry.";
+    if(button)button.disabled=false;
+    return;
+  }
+  if(purchase.status==="error" || purchase.error){
+    if(statusEl)statusEl.textContent=purchase.message||purchase.error||"Google Play purchase was not completed.";
+    if(button)button.disabled=false;
+    return;
+  }
+  if(!userId){
+    if(statusEl)statusEl.textContent="Please login again, then restore your Google Play purchase.";
+    if(button)button.disabled=false;
+    return;
+  }
+  if(!purchase.purchaseToken || purchase.productId!=="prem_milan_premium"){
+    if(statusEl)statusEl.textContent="Google Play did not return a valid Premium purchase. No membership was activated.";
+    if(button)button.disabled=false;
+    return;
+  }
+  if(statusEl)statusEl.textContent="Verifying subscription securely with Google Play…";
+  try{
+    const response=await fetch(PM_API+"/verify-google-play-subscription",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        user_id:userId,
+        product_id:purchase.productId,
+        purchase_token:purchase.purchaseToken
+      })
+    });
+    const result=await response.json();
+    if(!response.ok||!result.status||!result.premium){
+      throw new Error(result.message||"Google Play subscription verification failed.");
+    }
+    await checkPremiumStatusAfterPayment();
+    if(statusEl){statusEl.className="pmPremiumStatus active";statusEl.textContent="✓ Google Play verified your subscription. Premium is active ❤️";}
+    if(button){button.textContent="Premium Active ✓";button.disabled=true;}
+  }catch(error){
+    if(statusEl)statusEl.textContent=(error&&error.message)||"Verification is pending. Do not pay again; use Restore Purchase or check membership status.";
+    if(button)button.disabled=false;
+  }
+};
+
+// The Android bridge can call this after BillingClient.queryPurchasesAsync().
+window.onGooglePlayRestoreResult=function(raw){
+  let purchases=[];
+  try{purchases=typeof raw==="string"?JSON.parse(raw):raw;}catch(e){purchases=[];}
+  if(!Array.isArray(purchases))purchases=purchases?[purchases]:[];
+  const match=purchases.find(p=>p&&p.productId==="prem_milan_premium"&&p.purchaseToken);
+  if(match){window.onGooglePlayPurchaseResult(match);return;}
+  const statusEl=document.getElementById("pmPremiumPageStatus");
+  if(statusEl)statusEl.textContent="No active Prem Milan Google Play subscription was found for this Google account.";
+  const button=document.getElementById("pmPremiumBuyButton");
+  if(button)button.disabled=false;
 }
 
 
