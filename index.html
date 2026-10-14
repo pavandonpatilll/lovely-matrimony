@@ -4,6 +4,9 @@
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://lovely-matrimony-q4vn.onrender.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 
 <title>Matrimony App</title>
 
@@ -2449,8 +2452,8 @@ async function openChat(receiverId,name){
   // Messages: quick refresh, but only while the tab is visible.
   chatInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)loadChat(true);},2200);
   // Presence/typing: lightweight endpoint, faster than reloading 200 messages.
-  chatPresenceInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)refreshChatPresence();},900);
-  chatPresencePulse=setInterval(()=>{if(document.visibilityState!=="hidden")pulsePresence();},10000);
+  chatPresenceInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)refreshChatPresence();},1800);
+  // Use the single global presence heartbeat; do not send a duplicate every 10 seconds.
 }
 
 function closeChat(){
