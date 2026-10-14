@@ -60,7 +60,7 @@ async def protect_admin_api(request: Request, call_next):
 
 # Razorpay TEST MODE configuration. Keep the Plan ID in code as requested.
 # RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in Render environment variables.
-RAZORPAY_PLAN_ID = "plan_TnTOiuS4QDziLd"
+RAZORPAY_PLAN_ID = "plan_TnqNIdEEOuIwpi"
 RAZORPAY_API_BASE = "https://api.razorpay.com/v1"
 PREMIUM_AMOUNT_INR = 15
 PREMIUM_PLAN_LABEL = "Prem Milan Premium Monthly"
