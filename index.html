@@ -1920,6 +1920,13 @@ window.onGooglePlayPurchaseResult=async function(raw){
     if(!response.ok||!result.status||!result.premium){
       throw new Error(result.message||"Google Play subscription verification failed.");
     }
+    // Acknowledge only after our backend has independently verified the purchase.
+    // Google Play requires acknowledgement of new purchases or may refund them.
+    const billingBridge=window.PremMilanBilling;
+    if(!purchase.acknowledged && billingBridge && typeof billingBridge.acknowledgePurchase==="function"){
+      try{ billingBridge.acknowledgePurchase(purchase.purchaseToken); }
+      catch(ackError){ console.warn("Google Play acknowledgement request failed", ackError); }
+    }
     await checkPremiumStatusAfterPayment();
     if(statusEl){statusEl.className="pmPremiumStatus active";statusEl.textContent="✓ Google Play verified your subscription. Premium is active ❤️";}
     if(button){button.textContent="Premium Active ✓";button.disabled=true;}
