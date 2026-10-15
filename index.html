@@ -808,75 +808,9 @@ input,select,textarea,button{max-width:100%;min-width:0}
 @media(max-width:380px){.pmEditProfileButton{width:calc(100% - 16px);font-size:14px}}
 </style>
 
-
-<style id="pm-match-poster-style">
-.pmMatchPoster{position:relative;isolation:isolate;overflow:hidden;margin:10px 0 18px;padding:23px 18px 17px;border-radius:24px;color:#fff;text-align:center;background:radial-gradient(circle at 12% 5%,rgba(255,255,255,.25),transparent 27%),linear-gradient(135deg,#7b1fa2 0%,#ec407a 52%,#ff8a65 100%);box-shadow:0 14px 30px rgba(151,35,100,.22)}
-.pmMatchPosterGlow{position:absolute;z-index:-1;width:170px;height:170px;right:-65px;top:-70px;border-radius:50%;background:rgba(255,255,255,.17)}
-.pmMatchPosterKicker{font-size:10px;letter-spacing:2px;font-weight:900;opacity:.9}
-.pmMatchPoster h2{font-size:clamp(23px,6vw,31px);line-height:1.15;margin:10px 0 8px;color:#fff}
-.pmMatchPoster h2 em{font-family:Georgia,serif;color:#ffe6a6;font-weight:700}
-.pmMatchPoster p{font-size:13px;line-height:1.5;color:#fff4f8;max-width:360px;margin:0 auto}
-.pmMatchPosterArt{display:flex;align-items:center;justify-content:center;gap:12px;margin:15px 0 10px;font-size:34px;filter:drop-shadow(0 5px 7px rgba(70,0,40,.15))}
-.pmMatchPosterArt b{display:grid;place-items:center;width:65px;height:65px;border:2px solid rgba(255,255,255,.8);border-radius:50%;background:rgba(255,255,255,.16);font-size:32px;animation:pmMatchPulse 2.2s ease-in-out infinite}
-.pmMatchPosterFoot{font-size:11px;font-weight:800;letter-spacing:.4px;color:#fff0bd}
-@keyframes pmMatchPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
-@media(prefers-reduced-motion:reduce){.pmMatchPosterArt b{animation:none}}
-</style>
-
 </head>
 
 <body>
-
-<!-- Prem Milan language chooser: shown before registration/login -->
-<style>
-#pmLanguageGate{position:fixed;inset:0;z-index:99999;background:linear-gradient(145deg,#fff0f6,#f5eaff 55%,#ffe3ec);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto}
-#pmLanguageGate.pm-lang-hidden{display:none!important}.pm-lang-card{width:min(100%,520px);background:#fff;border-radius:26px;padding:24px;box-shadow:0 18px 55px #a7437730;text-align:center}.pm-lang-card h1{margin:0 0 8px;color:#b42362;font-size:27px}.pm-lang-card p{color:#76576a;margin:0 0 18px}.pm-lang-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pm-lang-option{display:flex;align-items:center;gap:10px;text-align:left;border:1px solid #f0d3e1;background:#fff8fc;border-radius:15px;padding:12px;min-height:58px;color:#4e3042;font-weight:700}.pm-lang-option .pm-lang-icon{font-size:24px}.pm-lang-option[aria-pressed=true]{border:2px solid #d63384;background:#ffe7f2;box-shadow:0 4px 12px #d6338420}.pm-lang-option small{display:block;font-weight:500;color:#856579}.pm-lang-continue{margin-top:16px;width:100%;border:0;border-radius:14px;padding:14px;background:linear-gradient(100deg,#d63384,#7b3fe4);color:white;font-weight:800;font-size:16px}.pm-language-inline{border:1px solid #f0c6da;border-radius:14px;background:#fff6fb;padding:12px;margin-bottom:14px}.pm-language-inline select{width:100%;padding:11px;border:1px solid #e8bdd2;border-radius:10px;background:white;font-size:15px}
-@media(max-width:360px){.pm-lang-card{padding:17px}.pm-lang-grid{gap:7px}.pm-lang-option{padding:9px;font-size:13px}}
-</style>
-<div id="pmLanguageGate" role="dialog" aria-modal="true" aria-label="Choose language">
- <div class="pm-lang-card"><div style="font-size:38px;margin-bottom:8px">❤️</div><h1>Prem Milan</h1><p id="pmLangPrompt">Choose your language to continue</p>
-  <div class="pm-lang-grid" id="pmLangGrid">
-   <button class="pm-lang-option" data-lang="mr" aria-pressed="true"><span class="pm-lang-icon">🪔</span><span>मराठी<small>Marathi</small></span></button>
-   <button class="pm-lang-option" data-lang="hi" aria-pressed="false"><span class="pm-lang-icon">🇮🇳</span><span>हिन्दी<small>Hindi</small></span></button>
-   <button class="pm-lang-option" data-lang="en" aria-pressed="false"><span class="pm-lang-icon">🌐</span><span>English<small>English</small></span></button>
-   <button class="pm-lang-option" data-lang="pa" aria-pressed="false"><span class="pm-lang-icon">🪯</span><span>ਪੰਜਾਬੀ<small>Punjabi</small></span></button>
-   <button class="pm-lang-option" data-lang="gu" aria-pressed="false"><span class="pm-lang-icon">🦚</span><span>ગુજરાતી<small>Gujarati</small></span></button>
-   <button class="pm-lang-option" data-lang="bn" aria-pressed="false"><span class="pm-lang-icon">🌺</span><span>বাংলা<small>Bengali</small></span></button>
-   <button class="pm-lang-option" data-lang="ta" aria-pressed="false"><span class="pm-lang-icon">🌸</span><span>தமிழ்<small>Tamil</small></span></button>
-   <button class="pm-lang-option" data-lang="te" aria-pressed="false"><span class="pm-lang-icon">🌼</span><span>తెలుగు<small>Telugu</small></span></button>
-   <button class="pm-lang-option" data-lang="kn" aria-pressed="false"><span class="pm-lang-icon">🌿</span><span>ಕನ್ನಡ<small>Kannada</small></span></button>
-   <button class="pm-lang-option" data-lang="ur" aria-pressed="false"><span class="pm-lang-icon">🌙</span><span>اردو<small>Urdu</small></span></button>
-  </div><button class="pm-lang-continue" id="pmLangContinue">Continue →</button>
- </div>
-</div>
-<script>
-(function(){
- const names={mr:'मराठी',hi:'हिन्दी',en:'English',pa:'ਪੰਜਾਬੀ',gu:'ગુજરાતી',bn:'বাংলা',ta:'தமிழ்',te:'తెలుగు',kn:'ಕನ್ನಡ',ur:'اردو'};
- const translations={
-  mr:{'Home':'मुख्यपृष्ठ','Search':'शोधा','Matches':'जुळणी','Chat':'चॅट','Profile':'प्रोफाइल','Settings':'सेटिंग्ज','Login':'लॉगिन','Register':'नोंदणी','Full Name':'पूर्ण नाव','Mobile Number':'मोबाईल नंबर','Password':'पासवर्ड','Edit Profile':'प्रोफाइल संपादित करा','Notifications':'सूचना','Choose your language to continue':'पुढे जाण्यासाठी भाषा निवडा','Continue →':'पुढे जा →','Your Matches':'तुमच्या जुळण्या','See All':'सर्व पहा'},
-  hi:{'Home':'होम','Search':'खोजें','Matches':'मैच','Chat':'चैट','Profile':'प्रोफाइल','Settings':'सेटिंग्स','Login':'लॉगिन','Register':'रजिस्टर करें','Full Name':'पूरा नाम','Mobile Number':'मोबाइल नंबर','Password':'पासवर्ड','Edit Profile':'प्रोफाइल एडिट करें','Notifications':'सूचनाएँ','Choose your language to continue':'आगे बढ़ने के लिए भाषा चुनें','Continue →':'आगे बढ़ें →','Your Matches':'आपके मैच','See All':'सभी देखें'},
-  en:{'Home':'Home','Search':'Search','Matches':'Matches','Chat':'Chat','Profile':'Profile','Settings':'Settings','Login':'Login','Register':'Register','Full Name':'Full Name','Mobile Number':'Mobile Number','Password':'Password','Edit Profile':'Edit Profile','Notifications':'Notifications','Choose your language to continue':'Choose your language to continue','Continue →':'Continue →','Your Matches':'Your Matches','See All':'See All'},
-  pa:{'Home':'ਮੁੱਖ ਪੰਨਾ','Search':'ਖੋਜ','Matches':'ਮੇਲ','Chat':'ਚੈਟ','Profile':'ਪ੍ਰੋਫ਼ਾਈਲ','Settings':'ਸੈਟਿੰਗਾਂ','Login':'ਲਾਗਇਨ','Register':'ਰਜਿਸਟਰ','Full Name':'ਪੂਰਾ ਨਾਮ','Mobile Number':'ਮੋਬਾਈਲ ਨੰਬਰ','Password':'ਪਾਸਵਰਡ','Edit Profile':'ਪ੍ਰੋਫ਼ਾਈਲ ਸੋਧੋ','Notifications':'ਸੂਚਨਾਵਾਂ','Choose your language to continue':'ਜਾਰੀ ਰੱਖਣ ਲਈ ਭਾਸ਼ਾ ਚੁਣੋ','Continue →':'ਜਾਰੀ ਰੱਖੋ →','Your Matches':'ਤੁਹਾਡੇ ਮੇਲ','See All':'ਸਭ ਵੇਖੋ'},
-  gu:{'Home':'હોમ','Search':'શોધો','Matches':'મેચ','Chat':'ચેટ','Profile':'પ્રોફાઇલ','Settings':'સેટિંગ્સ','Login':'લૉગિન','Register':'નોંધણી','Full Name':'પૂરું નામ','Mobile Number':'મોબાઇલ નંબર','Password':'પાસવર્ડ','Edit Profile':'પ્રોફાઇલ સંપાદિત કરો','Notifications':'સૂચનાઓ','Choose your language to continue':'આગળ વધવા માટે ભાષા પસંદ કરો','Continue →':'આગળ વધો →','Your Matches':'તમારા મેચ','See All':'બધા જુઓ'},
-  bn:{'Home':'হোম','Search':'খুঁজুন','Matches':'ম্যাচ','Chat':'চ্যাট','Profile':'প্রোফাইল','Settings':'সেটিংস','Login':'লগইন','Register':'নিবন্ধন','Full Name':'পুরো নাম','Mobile Number':'মোবাইল নম্বর','Password':'পাসওয়ার্ড','Edit Profile':'প্রোফাইল সম্পাদনা','Notifications':'বিজ্ঞপ্তি','Choose your language to continue':'চালিয়ে যেতে ভাষা বেছে নিন','Continue →':'চালিয়ে যান →','Your Matches':'আপনার ম্যাচ','See All':'সব দেখুন'},
-  ta:{'Home':'முகப்பு','Search':'தேடல்','Matches':'பொருத்தங்கள்','Chat':'அரட்டை','Profile':'சுயவிவரம்','Settings':'அமைப்புகள்','Login':'உள்நுழை','Register':'பதிவு','Full Name':'முழுப் பெயர்','Mobile Number':'கைபேசி எண்','Password':'கடவுச்சொல்','Edit Profile':'சுயவிவரத்தைத் திருத்து','Notifications':'அறிவிப்புகள்','Choose your language to continue':'தொடர மொழியைத் தேர்ந்தெடுக்கவும்','Continue →':'தொடரவும் →','Your Matches':'உங்கள் பொருத்தங்கள்','See All':'அனைத்தையும் காண்க'},
-  te:{'Home':'హోమ్','Search':'వెతకండి','Matches':'మ్యాచ్‌లు','Chat':'చాట్','Profile':'ప్రొఫైల్','Settings':'సెట్టింగ్‌లు','Login':'లాగిన్','Register':'నమోదు','Full Name':'పూర్తి పేరు','Mobile Number':'మొబైల్ నంబర్','Password':'పాస్‌వర్డ్','Edit Profile':'ప్రొఫైల్ సవరించు','Notifications':'నోటిఫికేషన్‌లు','Choose your language to continue':'కొనసాగడానికి భాషను ఎంచుకోండి','Continue →':'కొనసాగించు →','Your Matches':'మీ మ్యాచ్‌లు','See All':'అన్నీ చూడండి'},
-  kn:{'Home':'ಮುಖಪುಟ','Search':'ಹುಡುಕಿ','Matches':'ಹೊಂದಾಣಿಕೆಗಳು','Chat':'ಚಾಟ್','Profile':'ಪ್ರೊಫೈಲ್','Settings':'ಸೆಟ್ಟಿಂಗ್‌ಗಳು','Login':'ಲಾಗಿನ್','Register':'ನೋಂದಣಿ','Full Name':'ಪೂರ್ಣ ಹೆಸರು','Mobile Number':'ಮೊಬೈಲ್ ಸಂಖ್ಯೆ','Password':'ಪಾಸ್‌ವರ್ಡ್','Edit Profile':'ಪ್ರೊಫೈಲ್ ಸಂಪಾದಿಸಿ','Notifications':'ಅಧಿಸೂಚನೆಗಳು','Choose your language to continue':'ಮುಂದುವರಿಯಲು ಭಾಷೆ ಆಯ್ಕೆಮಾಡಿ','Continue →':'ಮುಂದುವರಿಸಿ →','Your Matches':'ನಿಮ್ಮ ಹೊಂದಾಣಿಕೆಗಳು','See All':'ಎಲ್ಲವನ್ನೂ ನೋಡಿ'},
-  ur:{'Home':'ہوم','Search':'تلاش','Matches':'موزوں رشتے','Chat':'چیٹ','Profile':'پروفائل','Settings':'ترتیبات','Login':'لاگ اِن','Register':'رجسٹر','Full Name':'پورا نام','Mobile Number':'موبائل نمبر','Password':'پاس ورڈ','Edit Profile':'پروفائل میں ترمیم','Notifications':'اطلاعات','Choose your language to continue':'جاری رکھنے کے لیے زبان منتخب کریں','Continue →':'جاری رکھیں →','Your Matches':'آپ کے رشتے','See All':'سب دیکھیں'}
- };
- let selected=localStorage.getItem('pmLanguage')||'mr';
- function translatePage(){const dict=translations[selected]||translations.en;document.documentElement.lang=selected;document.querySelectorAll('.bottomNav .navItem').forEach(el=>{const span=el.querySelector('span');const raw=el.textContent.trim().replace(/^\S+\s*/, '').trim();if(dict[raw]){const icon=span?span.outerHTML+' ':'';el.innerHTML=icon+dict[raw];}});document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(el=>{const original=el.getAttribute('data-pm-original-placeholder')||el.placeholder;if(!el.getAttribute('data-pm-original-placeholder'))el.setAttribute('data-pm-original-placeholder',original);if(dict[original])el.placeholder=dict[original];});document.querySelectorAll('button,.menuItem,h2,h3').forEach(el=>{if(el.children.length===0){const original=el.getAttribute('data-pm-original-text')||el.textContent.trim();if(!el.getAttribute('data-pm-original-text'))el.setAttribute('data-pm-original-text',original);if(dict[original])el.textContent=dict[original];}});const prompt=document.getElementById('pmLangPrompt');if(prompt)prompt.textContent=dict['Choose your language to continue']||'Choose your language to continue';const cont=document.getElementById('pmLangContinue');if(cont)cont.textContent=dict['Continue →']||'Continue →';}
- function choose(code){selected=code;document.querySelectorAll('.pm-lang-option').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.lang===code)));}
- document.querySelectorAll('.pm-lang-option').forEach(b=>b.addEventListener('click',()=>choose(b.dataset.lang)));
- const saved=localStorage.getItem('pmLanguage');if(saved)choose(saved);else choose('mr');
- document.getElementById('pmLangContinue').addEventListener('click',()=>{localStorage.setItem('pmLanguage',selected);translatePage();document.getElementById('pmLanguageGate').classList.add('pm-lang-hidden');});
- window.pmSetLanguage=function(code){if(!translations[code])return;choose(code);localStorage.setItem('pmLanguage',code);translatePage();const gate=document.getElementById('pmLanguageGate');if(gate)gate.classList.add('pm-lang-hidden');};
- window.pmOpenLanguagePicker=function(){const gate=document.getElementById('pmLanguageGate');if(gate){gate.classList.remove('pm-lang-hidden');choose(localStorage.getItem('pmLanguage')||'mr');}};
- window.pmLanguageName=()=>names[selected]||'English';
- window.addEventListener('pageshow',()=>{if(localStorage.getItem('pmLanguage'))document.getElementById('pmLanguageGate').classList.add('pm-lang-hidden');});
-})();
-</script>
-
 <script>
 window.PM_API="https://lovely-matrimony-q4vn.onrender.com";
 window.__pmNativeFetch=window.fetch.bind(window);
@@ -1257,21 +1191,7 @@ font-weight:500;
 
 </div>
 
-<div class="profileStatus">
 
-<h3>Profile Completion</h3>
-
-<div class="progressBar">
-
-<div id="progressFill">
-
-40%
-
-</div>
-
-</div>
-
-</div>
 
 </div>
 
@@ -1382,15 +1302,7 @@ No Profiles Found
 
 <div id="matchesSection" class="hidden">
 
-<section class="pmMatchPoster">
-  <div class="pmMatchPosterGlow"></div>
-  <div class="pmMatchPosterKicker">YOUR STORY STARTS HERE</div>
-  <h2>❤️ Meet Your <em>Perfect Match</em></h2>
-  <p>Real profiles. Meaningful connections. A beautiful journey together.</p>
-  <div class="pmMatchPosterArt" aria-hidden="true"><span>🌷</span><b>💞</b><span>🌹</span></div>
-  <div class="pmMatchPosterFoot">✨ Made for love, trust & forever ✨</div>
-</section>
-<h2 style="margin:18px 0 14px;">❤️ My Matches</h2>
+<h2 style="margin-bottom:20px;">❤️ My Matches</h2>
 
 <div id="matchesList">
 
@@ -1718,8 +1630,6 @@ onclick="updateProfile()">
 <div id="settingsSection" class="hidden">
 
 <h2 style="margin-bottom:20px;">⚙ Settings</h2>
-
-<div class="pm-language-inline"><b>🌐 App Language / भाषा</b><p style="margin:6px 0 10px;color:#76576a;font-size:13px">Change your language anytime</p><select aria-label="App language" onchange="pmSetLanguage(this.value)"><option value="mr">🪔 मराठी</option><option value="hi">🇮🇳 हिन्दी</option><option value="en">🌐 English</option><option value="pa">🪯 ਪੰਜਾਬੀ</option><option value="gu">🦚 ગુજરાતી</option><option value="bn">🌺 বাংলা</option><option value="ta">🌸 தமிழ்</option><option value="te">🌼 తెలుగు</option><option value="kn">🌿 ಕನ್ನಡ</option><option value="ur">🌙 اردو</option></select></div>
 
 <button
 class="btn"
@@ -2249,7 +2159,7 @@ border:3px solid #ff4d6d;
 ">
 
 <h3>${user.name}</h3>
-<p style="display:inline-block;background:#fff0f5;color:#a01842;border-radius:99px;padding:4px 9px;font-size:12px;font-weight:800">${user.gender||"Match"} profile ❤️</p>
+
 <p>🎂 Age : ${user.age}</p>
 
 <p>📍 ${user.city}</p>
@@ -2370,13 +2280,13 @@ border-radius:15px;
 box-shadow:0 5px 15px rgba(0,0,0,.1);
 ">
 
-<h3 style="margin:0 0 8px;color:#d6336c;">${item.title}</h3>
+<h3>${item.title}</h3>
 
 <p style="margin:8px 0;">
+
 ${item.message}
+
 </p>
-${String(item.title||'').toLowerCase().includes('interest') && String(item.title||'').toLowerCase().includes('new') ? `<button class="btn" style="margin-top:8px" onclick="showSection('interest');loadReceivedInterests()">❤️ View Interest · Accept / Reject</button>` : ''}
-${String(item.title||'').toLowerCase().includes('message') ? `<button class="btn" style="margin-top:8px" onclick="showSection('chat');openChatSection()">💬 Open Chat</button>` : ''}
 
 <small>
 
@@ -2604,7 +2514,7 @@ async function openChatSection(){
   try{
     const access = await pmGetPremiumStatus();
     if(!access.status || !access.premium){
-      const goPremium = confirm("💬 Chat Premium members ke liye hai.\\n\\n₹15/month plan lekar chat aur all matches unlock karein.\\n\\nPremium plan dekhna hai?");
+      const goPremium = confirm("💬 Chat Premium members ke liye hai. ₹15/month plan lekar chat aur all matches unlock karein. Premium plan dekhna hai?");
       if(goPremium) await buyPremium();
       return;
     }
@@ -2939,29 +2849,18 @@ return;
 
 }
 
-const myGender=String(localStorage.getItem("userGender")||"").trim().toLowerCase();
-const wantedGender=myGender==="male"?"female":myGender==="female"?"male":"";
-const safeMatches=(Array.isArray(result.matches)?result.matches:[]).filter(user=>{
-  const g=String(user.gender||"").trim().toLowerCase();
-  return wantedGender && g===wantedGender;
-});
 let html="";
-if(!wantedGender){
-  html='<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:14px;color:#9a3412;font-weight:700">Please update your gender in Edit Profile to see suitable matches. ❤️</div>';
-  document.getElementById("matchesList").innerHTML=html;
-  return;
-}
 if(result.limited){
   html='<div style="background:#fff0f4;border:1px solid #ffd0dc;border-radius:12px;padding:10px;margin-bottom:12px;color:#9f1239;font-weight:700;">Free account: 3 matches only. ❤️ <button class="btn" style="margin-top:8px;padding:9px" onclick="buyPremium()">Unlock all matches with Premium</button></div>';
 }
 
-if(safeMatches.length===0){
+if(result.matches.length===0){
 
-html += "<div style=\"background:#fff;border-radius:18px;padding:22px;text-align:center;box-shadow:0 8px 22px rgba(0,0,0,.07)\"><div style=\"font-size:38px\">💞</div><h3 style=\"margin:8px 0\">Your story is waiting</h3><p style=\"color:#777;font-size:13px\">Abhi suitable opposite-gender accepted matches nahi mile. Profile complete karo aur naye interests ka wait karo.</p></div>";
+html += "<h3>No Matches Found ❤️</h3>";
 
 }else{
 
-safeMatches.forEach(user=>{
+result.matches.forEach(user=>{
 
 html+=`
 
@@ -3222,10 +3121,27 @@ border:3px solid #ff4d6d;
 
 <p><b>Status :</b> ${user.status}</p>
 
-${String(user.status||'Pending').toLowerCase()==='pending' ? `<div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;">
-<button class="btn" style="flex:1;min-width:110px;background:#28a745;" onclick="interestAction(${user.interest_id},'Accepted')">✅ Accept</button>
-<button class="btn" style="flex:1;min-width:110px;background:#dc3545;" onclick="interestAction(${user.interest_id},'Rejected')">❌ Reject</button>
-</div>` : `<p style="font-weight:800;color:${String(user.status).toLowerCase()==='accepted'?'#218838':'#777'};margin-top:12px">${String(user.status).toLowerCase()==='accepted'?'✅ Accepted':'❌ Rejected'}</p>`}
+<div style="margin-top:15px;">
+
+<button
+class="btn"
+style="margin-bottom:10px;background:#28a745;"
+onclick="interestAction(${user.interest_id},'Accepted')">
+
+✅ Accept
+
+</button>
+
+<button
+class="btn"
+style="background:#dc3545;"
+onclick="interestAction(${user.interest_id},'Rejected')">
+
+❌ Reject
+
+</button>
+
+</div>
 
 </div>
 
@@ -3431,9 +3347,6 @@ pmQuietRetry("server");
 
 function showSection(page){
 
-if(!window.pmHandlingPopstate && window.currentSection !== page){
-  try { history.pushState({premMilan:true,screen:page}, "", "#"+page); } catch(e) {}
-}
 window.currentSection=page;
 
 const sections=[
@@ -4233,23 +4146,19 @@ await pmFirebase.auth().createUserWithEmailAndPassword(email,password);
 })();
 
 (function(){
-  let ready=false;
-  try{ready=!!history.state?.premMilan;}catch(e){}
-  if(!ready){history.replaceState({premMilan:true,screen:window.currentSection||"home"},"",location.hash||"#home");}
-  window.addEventListener("popstate",function(event){
-    const menu=document.getElementById("sideMenu");
-    if(menu&&menu.classList.contains("active")){if(typeof closeMenu==='function')closeMenu();history.pushState({premMilan:true,screen:window.currentSection||"home"},"",location.hash||"#home");return;}
-    const chat=document.getElementById("chatBox");
-    if(chat&&chat.style.display!=="none"){if(typeof closeChat==='function')closeChat();history.pushState({premMilan:true,screen:window.currentSection||"chat"},"",location.hash||"#chat");return;}
-    const modal=document.getElementById("pmProfileModal");
-    if(modal&&!modal.classList.contains("hidden")){if(typeof pmCloseProfile==='function')pmCloseProfile();history.pushState({premMilan:true,screen:window.currentSection||"home"},"",location.hash||"#home");return;}
-    const target=(event.state&&event.state.premMilan&&event.state.screen)||"home";
-    window.pmHandlingPopstate=true;
-    if(typeof showSection==='function')showSection(target);
-    window.pmHandlingPopstate=false;
-    // Keep one in-app history entry at the current screen, preventing the WebView from exiting.
-    history.pushState({premMilan:true,screen:target},"","#"+target);
-  });
+let ready=false;
+try{ready=!!history.state?.premMilan;}catch(e){}
+if(!ready){history.replaceState({premMilan:true,screen:"home"},"");}
+window.addEventListener("popstate",function(){
+const menu=document.getElementById("sideMenu");
+if(menu&&menu.classList.contains("active")){if(typeof closeMenu==='function')closeMenu();history.pushState({premMilan:true},"");return;}
+const chat=document.getElementById("chatBox");
+if(chat&&chat.style.display!=="none"){if(typeof closeChat==='function')closeChat();history.pushState({premMilan:true},"");return;}
+const modal=document.getElementById("pmProfileModal");
+if(modal&&!modal.classList.contains("hidden")){if(typeof pmCloseProfile==='function')pmCloseProfile();history.pushState({premMilan:true},"");return;}
+if(typeof showSection==='function'){if(window.currentSection==="userProfile")showSection("search");else showSection("home");}
+history.pushState({premMilan:true,screen:"home"},"");
+});
 })();
 </script>
 
@@ -4262,20 +4171,55 @@ document.addEventListener("DOMContentLoaded", function(){
   }
 });
 </script>
-<script id="pmLanguageBackGuard">
+
+<style id="pm-home-match-carousel-style">
+.pmHomeMatches{margin:14px 0 18px;background:rgba(255,255,255,.96);border-radius:22px;padding:15px 12px;box-shadow:0 10px 28px rgba(65,20,60,.13);overflow:hidden}
+.pmHomeMatchesHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.pmHomeMatchesHead h3{font-size:clamp(17px,4.8vw,21px);color:#a21caf;margin:0}
+.pmHomeSeeAll{border:0;border-radius:999px;padding:8px 11px;background:#fff0f5;color:#d62962;font-weight:800;white-space:nowrap;cursor:pointer}
+.pmHomeMatchRail{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 12px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x;scrollbar-width:thin}
+.pmHomeMatchCard{flex:0 0 clamp(145px,42vw,180px);max-width:180px;scroll-snap-align:start;border:1px solid #ffe0eb;border-radius:18px;background:linear-gradient(160deg,#fff,#fff3f7);padding:10px;text-align:center;cursor:pointer;box-shadow:0 4px 12px rgba(200,30,95,.08)}
+.pmHomeMatchCard img{width:100%;height:132px;object-fit:cover;border-radius:13px;background:#f5e8ef}
+.pmHomeMatchName{font-weight:900;font-size:15px;color:#3d2432;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:8px}
+.pmHomeMatchMeta{font-size:12px;color:#756571;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pmHomeMatchScore{display:inline-block;margin-top:7px;padding:4px 8px;border-radius:999px;background:#fce7f3;color:#a21caf;font-size:11px;font-weight:900}
+.pmHomeMatchEmpty{flex:0 0 100%;padding:18px 8px;text-align:center;color:#76616e;font-size:13px}
+@media(max-width:380px){.pmHomeMatches{padding:12px 9px}.pmHomeMatchCard{flex-basis:138px}.pmHomeMatchCard img{height:116px}}
+</style>
+<script id="pm-home-match-carousel-script">
 (function(){
- if(window.__pmBackGuardInstalled)return;window.__pmBackGuardInstalled=true;
- try{history.replaceState({premMilan:true,screen:window.currentSection||'home'},'',location.href);history.pushState({premMilan:true,guard:true},'',location.href);}catch(e){}
- window.addEventListener('popstate',function(e){
-   const gate=document.getElementById('pmLanguageGate');
-   if(gate&&!gate.classList.contains('pm-lang-hidden')){gate.classList.add('pm-lang-hidden');try{history.pushState({premMilan:true,guard:true},'',location.href);}catch(err){}return;}
-   if(window.currentSection&&window.currentSection!=='home'&&typeof showSection==='function'){
-     window.pmHandlingPopstate=true;showSection('home');window.pmHandlingPopstate=false;
-     try{history.pushState({premMilan:true,guard:true},'',location.pathname+'#home');}catch(err){}
-   }else{try{history.pushState({premMilan:true,guard:true},'',location.pathname+'#home');}catch(err){}}
- });
+ const api=window.PM_API||'https://lovely-matrimony-q4vn.onrender.com';
+ function safeText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+ function ensureRail(){
+   const home=document.getElementById('homeSection'); if(!home)return null;
+   let box=document.getElementById('pmHomeMatches'); if(box)return box;
+   box=document.createElement('section');box.id='pmHomeMatches';box.className='pmHomeMatches';
+   box.innerHTML='<div class="pmHomeMatchesHead"><h3>💕 Your Matches</h3><button type="button" class="pmHomeSeeAll" onclick="pmGoAllMatches()">See all →</button></div><div id="pmHomeMatchRail" class="pmHomeMatchRail"><div class="pmHomeMatchEmpty">Finding compatible profiles… 💗</div></div>';
+   const welcome=home.querySelector('.welcomeCard'); if(welcome)welcome.insertAdjacentElement('afterend',box); else home.appendChild(box);
+   return box;
+ }
+ window.pmGoAllMatches=function(){if(typeof showSection==='function')showSection('matches');if(typeof loadMatches==='function')loadMatches();};
+ window.pmLoadHomeMatches=async function(){
+   const uid=localStorage.getItem('userId');const box=ensureRail();if(!box||!uid)return;
+   const rail=document.getElementById('pmHomeMatchRail');if(!rail)return;
+   try{
+     const response=await fetch(api+'/smart-matches/'+encodeURIComponent(uid),{cache:'no-store'});const data=await response.json();
+     if(!data||!data.status||!Array.isArray(data.matches)){rail.innerHTML='<div class="pmHomeMatchEmpty">Matches refresh ho rahe hain. Thodi der baad try karein ❤️</div>';return;}
+     if(!data.matches.length){rail.innerHTML='<div class="pmHomeMatchEmpty">Abhi compatible profiles nahi mile. Profile details complete karein ❤️</div>';return;}
+     rail.innerHTML=data.matches.slice(0,12).map(u=>{
+       const photo=u.photo?(String(u.photo).startsWith('http')?u.photo:api+u.photo):'';
+       const meta=[u.age?u.age+' yrs':'',u.city||''].filter(Boolean).join(' · ');
+       return '<article class="pmHomeMatchCard" role="button" tabindex="0" onclick="pmHomeOpenMatch('+Number(u.id)+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();pmHomeOpenMatch('+Number(u.id)+')}"><img loading="lazy" src="'+safeText(photo)+'" alt="Profile photo" onerror="this.style.visibility=\'hidden\'"><div class="pmHomeMatchName">'+safeText(u.name||'Member')+'</div><div class="pmHomeMatchMeta">'+safeText(meta||'Profile available')+'</div><span class="pmHomeMatchScore">💜 '+safeText(u.match_percent==null?'Great match':u.match_percent+'% match')+'</span></article>';
+     }).join('');
+   }catch(e){rail.innerHTML='<div class="pmHomeMatchEmpty">Internet reconnect hone par matches phir load honge ❤️</div>';}
+ };
+ window.pmHomeOpenMatch=function(id){if(typeof pmOpenProfile==='function')pmOpenProfile(id);else window.pmGoAllMatches();};
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureRail();window.pmLoadHomeMatches()});else{ensureRail();window.pmLoadHomeMatches()}
+ const oldShow=window.showSection;
+ if(typeof oldShow==='function'&&!oldShow.__pmHomeMatchWrapped){const wrapped=function(page){const out=oldShow.apply(this,arguments);if(page==='home')window.pmLoadHomeMatches();return out};wrapped.__pmHomeMatchWrapped=true;window.showSection=wrapped;}
 })();
 </script>
+
 </body>
 
 </html>
