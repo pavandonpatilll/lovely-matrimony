@@ -797,6 +797,17 @@ input,select,textarea,button{max-width:100%;min-width:0}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 
+<style id="pm-profile-edit-button">
+.pmEditProfileButton{
+  display:block;width:calc(100% - 24px);max-width:500px;margin:14px auto 24px;
+  min-height:48px;padding:13px 16px;border:0;border-radius:15px;
+  background:linear-gradient(110deg,#ff416c,#9b2cff);color:#fff;
+  font-size:16px;font-weight:800;box-shadow:0 8px 18px rgba(180,35,94,.22);
+}
+.pmEditProfileButton:active{transform:scale(.985)}
+@media(max-width:380px){.pmEditProfileButton{width:calc(100% - 16px);font-size:14px}}
+</style>
+
 </head>
 
 <body>
@@ -1559,6 +1570,10 @@ Send
 <p id="profileAbout"></p>
 
 </div>
+
+<button type="button" class="btn pmEditProfileButton" onclick="showSection('editProfile');loadEditProfile();">
+  ✏️ Edit Profile
+</button>
 
 </div>
 
@@ -2513,7 +2528,7 @@ async function openChatSection(){
   try{
     const access = await pmGetPremiumStatus();
     if(!access.status || !access.premium){
-      const goPremium = confirm("💬 Chat Premium members ke liye hai.\\n\\n₹15/month plan lekar chat aur all matches unlock karein.\\n\\nPremium plan dekhna hai?");
+      const goPremium = confirm("💬 Chat Premium members ke liye hai. ₹15/month plan lekar chat aur all matches unlock karein. Premium plan dekhna hai?");
       if(goPremium) await buyPremium();
       return;
     }
