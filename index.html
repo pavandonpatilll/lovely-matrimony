@@ -2317,13 +2317,13 @@ border-radius:15px;
 box-shadow:0 5px 15px rgba(0,0,0,.1);
 ">
 
-<h3>${item.title}</h3>
+<h3 style="margin:0 0 8px;color:#d6336c;">${item.title}</h3>
 
 <p style="margin:8px 0;">
-
 ${item.message}
-
 </p>
+${String(item.title||'').toLowerCase().includes('interest') && String(item.title||'').toLowerCase().includes('new') ? `<button class="btn" style="margin-top:8px" onclick="showSection('interest');loadReceivedInterests()">❤️ View Interest · Accept / Reject</button>` : ''}
+${String(item.title||'').toLowerCase().includes('message') ? `<button class="btn" style="margin-top:8px" onclick="showSection('chat');openChatSection()">💬 Open Chat</button>` : ''}
 
 <small>
 
@@ -3169,27 +3169,10 @@ border:3px solid #ff4d6d;
 
 <p><b>Status :</b> ${user.status}</p>
 
-<div style="margin-top:15px;">
-
-<button
-class="btn"
-style="margin-bottom:10px;background:#28a745;"
-onclick="interestAction(${user.interest_id},'Accepted')">
-
-✅ Accept
-
-</button>
-
-<button
-class="btn"
-style="background:#dc3545;"
-onclick="interestAction(${user.interest_id},'Rejected')">
-
-❌ Reject
-
-</button>
-
-</div>
+${String(user.status||'Pending').toLowerCase()==='pending' ? `<div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;">
+<button class="btn" style="flex:1;min-width:110px;background:#28a745;" onclick="interestAction(${user.interest_id},'Accepted')">✅ Accept</button>
+<button class="btn" style="flex:1;min-width:110px;background:#dc3545;" onclick="interestAction(${user.interest_id},'Rejected')">❌ Reject</button>
+</div>` : `<p style="font-weight:800;color:${String(user.status).toLowerCase()==='accepted'?'#218838':'#777'};margin-top:12px">${String(user.status).toLowerCase()==='accepted'?'✅ Accepted':'❌ Rejected'}</p>`}
 
 </div>
 
@@ -3395,6 +3378,9 @@ pmQuietRetry("server");
 
 function showSection(page){
 
+if(!window.pmHandlingPopstate && window.currentSection !== page){
+  try { history.pushState({premMilan:true,screen:page}, "", "#"+page); } catch(e) {}
+}
 window.currentSection=page;
 
 const sections=[
@@ -4194,19 +4180,23 @@ await pmFirebase.auth().createUserWithEmailAndPassword(email,password);
 })();
 
 (function(){
-let ready=false;
-try{ready=!!history.state?.premMilan;}catch(e){}
-if(!ready){history.replaceState({premMilan:true,screen:"home"},"");}
-window.addEventListener("popstate",function(){
-const menu=document.getElementById("sideMenu");
-if(menu&&menu.classList.contains("active")){if(typeof closeMenu==='function')closeMenu();history.pushState({premMilan:true},"");return;}
-const chat=document.getElementById("chatBox");
-if(chat&&chat.style.display!=="none"){if(typeof closeChat==='function')closeChat();history.pushState({premMilan:true},"");return;}
-const modal=document.getElementById("pmProfileModal");
-if(modal&&!modal.classList.contains("hidden")){if(typeof pmCloseProfile==='function')pmCloseProfile();history.pushState({premMilan:true},"");return;}
-if(typeof showSection==='function'){if(window.currentSection==="userProfile")showSection("search");else showSection("home");}
-history.pushState({premMilan:true,screen:"home"},"");
-});
+  let ready=false;
+  try{ready=!!history.state?.premMilan;}catch(e){}
+  if(!ready){history.replaceState({premMilan:true,screen:window.currentSection||"home"},"",location.hash||"#home");}
+  window.addEventListener("popstate",function(event){
+    const menu=document.getElementById("sideMenu");
+    if(menu&&menu.classList.contains("active")){if(typeof closeMenu==='function')closeMenu();history.pushState({premMilan:true,screen:window.currentSection||"home"},"",location.hash||"#home");return;}
+    const chat=document.getElementById("chatBox");
+    if(chat&&chat.style.display!=="none"){if(typeof closeChat==='function')closeChat();history.pushState({premMilan:true,screen:window.currentSection||"chat"},"",location.hash||"#chat");return;}
+    const modal=document.getElementById("pmProfileModal");
+    if(modal&&!modal.classList.contains("hidden")){if(typeof pmCloseProfile==='function')pmCloseProfile();history.pushState({premMilan:true,screen:window.currentSection||"home"},"",location.hash||"#home");return;}
+    const target=(event.state&&event.state.premMilan&&event.state.screen)||"home";
+    window.pmHandlingPopstate=true;
+    if(typeof showSection==='function')showSection(target);
+    window.pmHandlingPopstate=false;
+    // Keep one in-app history entry at the current screen, preventing the WebView from exiting.
+    history.pushState({premMilan:true,screen:target},"","#"+target);
+  });
 })();
 </script>
 

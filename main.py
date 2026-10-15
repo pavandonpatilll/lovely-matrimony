@@ -1857,14 +1857,13 @@ def send_interest(data: InterestModel):
 
     conn.commit()
 
+    cursor.execute("SELECT name FROM users WHERE id=?", (data.sender_id,))
+    sender_row = cursor.fetchone()
+    sender_name = (sender_row["name"] if sender_row else "A member")
     create_notification(
-
         data.receiver_id,
-
         "New Interest ❤️",
-
-        "Someone sent you an interest."
-
+        f"{sender_name} sent you an interest. Open Received Interests to Accept or Reject."
     )
 
     return {
@@ -2102,14 +2101,14 @@ def send_message(data: MessageModel):
 
     conn.commit()
 
+    cursor.execute("SELECT name FROM users WHERE id=?", (data.sender_id,))
+    sender_row = cursor.fetchone()
+    sender_name = (sender_row["name"] if sender_row else "A member")
+    preview = (data.message or "").strip().replace("\n", " ")[:90]
     create_notification(
-
         data.receiver_id,
-
-        "New Message 💬",
-
-        "You received a new message."
-
+        f"New Message from {sender_name} 💬",
+        f"{sender_name}: {preview or 'sent you a message.'}"
     )
 
     return{
@@ -3539,11 +3538,16 @@ def smart_matches(user_id:int):
 
 @app.post("/respond-interest")
 def respond_interest(data:dict):
-    user_id=int(data.get("user_id",0))
-    other_id=int(data.get("other_id",0))
-    status=str(data.get("status","")).strip()
+    try:
+        user_id=int(data.get("user_id",0))
+        other_id=int(data.get("other_id",0))
+    except (TypeError, ValueError):
+        return {"status":False,"message":"Invalid user"}
+    status=str(data.get("status","")).strip().title()
     if status not in {"Accepted","Rejected"}:
-        return {"status":False,"message":"Invalid status"}
+        return {"status":False,"message":"Choose Accept or Reject."}
+    if user_id == other_id or not ensure_active_user(user_id) or not ensure_active_user(other_id):
+        return {"status":False,"message":"This profile is unavailable."}
     cursor.execute("""
         SELECT id FROM interests
         WHERE sender_id=? AND receiver_id=?
@@ -3551,11 +3555,16 @@ def respond_interest(data:dict):
     """,(other_id,user_id))
     row=cursor.fetchone()
     if row is None:
-        return {"status":False,"message":"Interest not found"}
+        return {"status":False,"message":"Interest not found."}
     cursor.execute("UPDATE interests SET status=? WHERE id=?",(status,row["id"]))
     conn.commit()
-    if status=="Accepted":
-        create_notification(other_id,"Interest Accepted ❤️","Your interest was accepted.")
+    cursor.execute("SELECT name FROM users WHERE id=?", (user_id,))
+    receiver_row=cursor.fetchone()
+    receiver_name=receiver_row["name"] if receiver_row else "A member"
+    if status == "Accepted":
+        create_notification(other_id,"Interest Accepted ❤️",f"{receiver_name} accepted your interest.")
+    else:
+        create_notification(other_id,"Interest Update",f"{receiver_name} declined your interest.")
     return {"status":True,"message":"Interest "+status+" successfully ❤️"}
 
 
