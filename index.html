@@ -808,6 +808,21 @@ input,select,textarea,button{max-width:100%;min-width:0}
 @media(max-width:380px){.pmEditProfileButton{width:calc(100% - 16px);font-size:14px}}
 </style>
 
+
+<style id="pm-match-poster-style">
+.pmMatchPoster{position:relative;isolation:isolate;overflow:hidden;margin:10px 0 18px;padding:23px 18px 17px;border-radius:24px;color:#fff;text-align:center;background:radial-gradient(circle at 12% 5%,rgba(255,255,255,.25),transparent 27%),linear-gradient(135deg,#7b1fa2 0%,#ec407a 52%,#ff8a65 100%);box-shadow:0 14px 30px rgba(151,35,100,.22)}
+.pmMatchPosterGlow{position:absolute;z-index:-1;width:170px;height:170px;right:-65px;top:-70px;border-radius:50%;background:rgba(255,255,255,.17)}
+.pmMatchPosterKicker{font-size:10px;letter-spacing:2px;font-weight:900;opacity:.9}
+.pmMatchPoster h2{font-size:clamp(23px,6vw,31px);line-height:1.15;margin:10px 0 8px;color:#fff}
+.pmMatchPoster h2 em{font-family:Georgia,serif;color:#ffe6a6;font-weight:700}
+.pmMatchPoster p{font-size:13px;line-height:1.5;color:#fff4f8;max-width:360px;margin:0 auto}
+.pmMatchPosterArt{display:flex;align-items:center;justify-content:center;gap:12px;margin:15px 0 10px;font-size:34px;filter:drop-shadow(0 5px 7px rgba(70,0,40,.15))}
+.pmMatchPosterArt b{display:grid;place-items:center;width:65px;height:65px;border:2px solid rgba(255,255,255,.8);border-radius:50%;background:rgba(255,255,255,.16);font-size:32px;animation:pmMatchPulse 2.2s ease-in-out infinite}
+.pmMatchPosterFoot{font-size:11px;font-weight:800;letter-spacing:.4px;color:#fff0bd}
+@keyframes pmMatchPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@media(prefers-reduced-motion:reduce){.pmMatchPosterArt b{animation:none}}
+</style>
+
 </head>
 
 <body>
@@ -1316,7 +1331,15 @@ No Profiles Found
 
 <div id="matchesSection" class="hidden">
 
-<h2 style="margin-bottom:20px;">❤️ My Matches</h2>
+<section class="pmMatchPoster">
+  <div class="pmMatchPosterGlow"></div>
+  <div class="pmMatchPosterKicker">YOUR STORY STARTS HERE</div>
+  <h2>❤️ Meet Your <em>Perfect Match</em></h2>
+  <p>Real profiles. Meaningful connections. A beautiful journey together.</p>
+  <div class="pmMatchPosterArt" aria-hidden="true"><span>🌷</span><b>💞</b><span>🌹</span></div>
+  <div class="pmMatchPosterFoot">✨ Made for love, trust & forever ✨</div>
+</section>
+<h2 style="margin:18px 0 14px;">❤️ My Matches</h2>
 
 <div id="matchesList">
 
@@ -2173,7 +2196,7 @@ border:3px solid #ff4d6d;
 ">
 
 <h3>${user.name}</h3>
-
+<p style="display:inline-block;background:#fff0f5;color:#a01842;border-radius:99px;padding:4px 9px;font-size:12px;font-weight:800">${user.gender||"Match"} profile ❤️</p>
 <p>🎂 Age : ${user.age}</p>
 
 <p>📍 ${user.city}</p>
@@ -2528,7 +2551,7 @@ async function openChatSection(){
   try{
     const access = await pmGetPremiumStatus();
     if(!access.status || !access.premium){
-      const goPremium = confirm("💬 Chat Premium members ke liye hai. ₹15/month plan lekar chat aur all matches unlock karein. Premium plan dekhna hai?");
+      const goPremium = confirm("💬 Chat Premium members ke liye hai.\\n\\n₹15/month plan lekar chat aur all matches unlock karein.\\n\\nPremium plan dekhna hai?");
       if(goPremium) await buyPremium();
       return;
     }
@@ -2863,18 +2886,29 @@ return;
 
 }
 
+const myGender=String(localStorage.getItem("userGender")||"").trim().toLowerCase();
+const wantedGender=myGender==="male"?"female":myGender==="female"?"male":"";
+const safeMatches=(Array.isArray(result.matches)?result.matches:[]).filter(user=>{
+  const g=String(user.gender||"").trim().toLowerCase();
+  return wantedGender && g===wantedGender;
+});
 let html="";
+if(!wantedGender){
+  html='<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:14px;color:#9a3412;font-weight:700">Please update your gender in Edit Profile to see suitable matches. ❤️</div>';
+  document.getElementById("matchesList").innerHTML=html;
+  return;
+}
 if(result.limited){
   html='<div style="background:#fff0f4;border:1px solid #ffd0dc;border-radius:12px;padding:10px;margin-bottom:12px;color:#9f1239;font-weight:700;">Free account: 3 matches only. ❤️ <button class="btn" style="margin-top:8px;padding:9px" onclick="buyPremium()">Unlock all matches with Premium</button></div>';
 }
 
-if(result.matches.length===0){
+if(safeMatches.length===0){
 
-html += "<h3>No Matches Found ❤️</h3>";
+html += "<div style=\"background:#fff;border-radius:18px;padding:22px;text-align:center;box-shadow:0 8px 22px rgba(0,0,0,.07)\"><div style=\"font-size:38px\">💞</div><h3 style=\"margin:8px 0\">Your story is waiting</h3><p style=\"color:#777;font-size:13px\">Abhi suitable opposite-gender accepted matches nahi mile. Profile complete karo aur naye interests ka wait karo.</p></div>";
 
 }else{
 
-result.matches.forEach(user=>{
+safeMatches.forEach(user=>{
 
 html+=`
 

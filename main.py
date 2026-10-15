@@ -3507,13 +3507,17 @@ def smart_matches(user_id:int):
     if me is None:
         return {"status":False,"message":"User not found","matches":[]}
 
+    my_gender=str(me["gender"] or "").strip().lower()
+    wanted_gender = "female" if my_gender == "male" else "male" if my_gender == "female" else ""
+    if not wanted_gender:
+        return {"status":True,"matches":[],"message":"Please complete your gender in profile to get suitable matches."}
     cursor.execute("""
-        SELECT id,name,age,height,religion,caste,education,occupation,city,state,country,photo,is_verified
+        SELECT id,name,gender,age,height,religion,caste,education,occupation,city,state,country,photo,is_verified
         FROM users
-        WHERE id!=?
+        WHERE id!=? AND lower(trim(coalesce(gender,'')))=?
         ORDER BY id DESC
         LIMIT 60
-    """,(user_id,))
+    """,(user_id,wanted_gender))
     rows=cursor.fetchall()
     out=[]
     for r in rows:
@@ -3560,108 +3564,49 @@ def respond_interest(data:dict):
 # =====================================================
 
 @app.get("/matches/{user_id}")
-
 def my_matches(user_id:int):
+    if not ensure_active_user(user_id):
+        return {"status":False,"message":"This profile has been disabled by admin.","matches":[]}
 
-    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","matches":[]}
+    cursor.execute("SELECT gender FROM users WHERE id=?", (user_id,))
+    me = cursor.fetchone()
+    my_gender = str(me["gender"] or "").strip().lower() if me else ""
+    wanted_gender = "female" if my_gender == "male" else "male" if my_gender == "female" else ""
+    if not wanted_gender:
+        return {"status":True,"premium":user_has_premium(user_id),"total":0,"limited":False,"matches":[],"message":"Please complete your gender in profile to get suitable matches."}
 
-    cursor.execute(
-
-        """
-
-        SELECT
-
-        users.id,
-
-        users.name,
-
-        users.age,
-
-        users.height,
-
-        users.religion,
-
-        users.caste,
-
-        users.education,
-
-        users.occupation,
-
-        users.city,
-
-        users.photo
-
+    cursor.execute("""
+        SELECT DISTINCT users.id, users.name, users.gender, users.age, users.height,
+               users.religion, users.caste, users.education, users.occupation,
+               users.city, users.photo
         FROM interests
-
-        INNER JOIN users
-
-        ON users.id = interests.sender_id
-
-        WHERE interests.receiver_id=?
-
-        AND interests.status='Accepted'
-
+        INNER JOIN users ON users.id = interests.sender_id
+        WHERE interests.receiver_id=? AND interests.status='Accepted'
+          AND lower(trim(coalesce(users.gender,'')))=?
         UNION
-
-        SELECT
-
-        users.id,
-
-        users.name,
-
-        users.age,
-
-        users.height,
-
-        users.religion,
-
-        users.caste,
-
-        users.education,
-
-        users.occupation,
-
-        users.city,
-
-        users.photo
-
+        SELECT DISTINCT users.id, users.name, users.gender, users.age, users.height,
+               users.religion, users.caste, users.education, users.occupation,
+               users.city, users.photo
         FROM interests
-
-        INNER JOIN users
-
-        ON users.id = interests.receiver_id
-
-        WHERE interests.sender_id=?
-
-        AND interests.status='Accepted'
-
+        INNER JOIN users ON users.id = interests.receiver_id
+        WHERE interests.sender_id=? AND interests.status='Accepted'
+          AND lower(trim(coalesce(users.gender,'')))=?
+        ORDER BY id DESC
         LIMIT 100
-        """,
+    """, (user_id, wanted_gender, user_id, wanted_gender))
 
-        (
-
-            user_id,
-
-            user_id
-
-        )
-
-    )
-
-    data=cursor.fetchall()
+    data = cursor.fetchall()
     premium_access = user_has_premium(user_id)
     total_available = len(data)
     if not premium_access:
         data = data[:3]
-
-    return{
-        "status":True,
+    return {
+        "status": True,
         "premium": premium_access,
         "total": total_available,
         "limited": not premium_access and total_available > len(data),
-        "matches":[dict(row) for row in data]
+        "matches": [dict(row) for row in data]
     }
-
 
 
 # =====================================================
