@@ -724,6 +724,7 @@ function openPremiumUsers(){
 document.getElementById("premiumPopup").style.display="block";
 
 loadPremiumUsers();
+loadSubscriptions();
 
 }
 
@@ -733,6 +734,54 @@ document.getElementById("premiumPopup").style.display="none";
 
 }
 
+
+function pmAdminDateTime(value){
+  if(!value) return "-";
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+}
+function pmAdminEsc(value){
+  return String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+async function loadSubscriptions(){
+  const body=document.getElementById("subscriptionTable");
+  if(!body)return;
+  body.innerHTML='<tr><td colspan="10" style="text-align:center">Refreshing Google Play subscription status…</td></tr>';
+  try{
+    const response=await fetch(API+"/admin/subscriptions");
+    const result=await response.json();
+    if(!response.ok||!result.status)throw new Error(result.detail||result.message||"Unable to load subscription history");
+    const rows=result.subscriptions||[];
+    if(!rows.length){
+      body.innerHTML='<tr><td colspan="10" style="text-align:center">No subscription records yet. Existing subscriptions will appear after the app verifies their purchase token.</td></tr>';
+      return;
+    }
+    body.innerHTML=rows.map(s=>{
+      const state=String(s.play_state||s.payment_status||s.status||"unknown").replace("SUBSCRIPTION_STATE_","");
+      let auto="Not available";
+      if(Number(s.auto_renewing)===1) auto="🟢 ON";
+      else if(Number(s.auto_renewing)===0) auto="🔴 OFF / Cancelled";
+      const statusLabel=(String(s.status||"").toLowerCase()==="active" && s.end_date && new Date(s.end_date)>new Date())?"🟢 Active until expiry":("⚪ "+state);
+      const order=s.latest_order_id||"-";
+      return `<tr>
+        <td>${pmAdminEsc(s.name||("User #"+s.user_id))}</td>
+        <td>${pmAdminEsc(s.mobile||"-")}</td>
+        <td>${pmAdminEsc(s.plan||"Prem Milan Premium")}<br>₹${pmAdminEsc(s.amount==null?"-":s.amount)}</td>
+        <td>${statusLabel}<br><small>${pmAdminEsc(state)}</small></td>
+        <td>${auto}</td>
+        <td>${pmAdminEsc(pmAdminDateTime(s.start_time||s.start_date))}</td>
+        <td>${pmAdminEsc(pmAdminDateTime(s.end_date))}</td>
+        <td>${pmAdminEsc(pmAdminDateTime(s.cancel_time))}</td>
+        <td style="min-width:170px;word-break:break-word">${pmAdminEsc(order)}</td>
+        <td>${pmAdminEsc(pmAdminDateTime(s.last_checked_at))}</td>
+      </tr>`;
+    }).join("");
+  }catch(error){
+    console.error("Subscription admin load:",error);
+    body.innerHTML=`<tr><td colspan="10" style="text-align:center;color:#b42348">Could not refresh from Google Play: ${pmAdminEsc(error.message||"Server error")}. Previously saved subscription details are retained.</td></tr>`;
+  }
+}
 
 async function loadReports(){
 
@@ -1303,6 +1352,24 @@ cursor:pointer;
 </tbody>
 
 </table>
+
+<hr style="margin:24px 0;border:0;border-top:1px solid #eee">
+<div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px">
+  <h3>💳 ₹15 Google Play Subscription & AutoPay History</h3>
+  <button onclick="loadSubscriptions()" style="background:#7b2cbf;padding:10px 14px">🔄 Refresh Play Status</button>
+</div>
+<p style="font-size:13px;color:#666;margin-bottom:12px;line-height:1.5">
+  Play Console se latest status refresh hota hai. Cancel karne par AutoPay band dikh sakta hai, lekin paid expiry tak Premium active reh sakta hai.
+</p>
+<div style="overflow:auto">
+<table>
+<thead><tr>
+<th>User</th><th>Mobile</th><th>Plan / Amount</th><th>Subscription</th><th>AutoPay</th>
+<th>Start Date & Time</th><th>Next Expiry</th><th>Cancel Date & Time</th><th>Last Order ID</th><th>Last Checked</th>
+</tr></thead>
+<tbody id="subscriptionTable"><tr><td colspan="10" style="text-align:center">Click Refresh Play Status to load subscription history.</td></tr></tbody>
+</table>
+</div>
 
 </div>
 

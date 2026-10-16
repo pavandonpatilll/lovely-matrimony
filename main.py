@@ -747,6 +747,21 @@ try:
     cursor.execute("ALTER TABLE premium ADD COLUMN subscription_id TEXT")
 except Exception:
     pass
+# Google Play subscription lifecycle fields (safe additive migrations).
+for _column_sql in [
+    "ALTER TABLE premium ADD COLUMN play_state TEXT",
+    "ALTER TABLE premium ADD COLUMN auto_renewing INTEGER",
+    "ALTER TABLE premium ADD COLUMN cancel_time TEXT",
+    "ALTER TABLE premium ADD COLUMN latest_order_id TEXT",
+    "ALTER TABLE premium ADD COLUMN last_checked_at TEXT",
+    "ALTER TABLE premium ADD COLUMN acknowledgement_state TEXT",
+    "ALTER TABLE premium ADD COLUMN start_time TEXT",
+]:
+    try:
+        cursor.execute(_column_sql)
+    except Exception:
+        pass
+
 try:
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_premium_subscription_id ON premium(subscription_id)")
 except Exception:
@@ -2942,6 +2957,24 @@ def google_play_subscription_details(purchase_token: str):
         raise RuntimeError("Could not reach Google Play to verify the subscription.")
 
 
+def google_play_lifecycle_fields(details, matching_items=None):
+    """Normalize subscription renewal/cancellation metadata returned by Google Play."""
+    items = matching_items if matching_items is not None else (details.get("lineItems") or [])
+    item = items[0] if items else {}
+    state = str(details.get("subscriptionState", "") or "")
+    auto_renew = (item.get("autoRenewingPlan") or {}).get("autoRenewEnabled")
+    cancel_context = details.get("canceledStateContext") or {}
+    user_cancel = cancel_context.get("userInitiatedCancellation") or {}
+    return {
+        "play_state": state,
+        "auto_renewing": None if auto_renew is None else int(bool(auto_renew)),
+        "cancel_time": user_cancel.get("cancelTime"),
+        "latest_order_id": item.get("latestSuccessfulOrderId") or details.get("latestOrderId"),
+        "acknowledgement_state": details.get("acknowledgementState"),
+        "start_time": details.get("startTime"),
+    }
+
+
 @app.post("/verify-google-play-subscription")
 def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
     """Activate Premium only after the Google Play Developer API verifies the purchase."""
@@ -2997,24 +3030,33 @@ def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
             if existing and int(existing["user_id"]) != int(data.user_id):
                 return {"status": False, "premium": False, "message": "This Google Play purchase is already linked to another Prem Milan account."}
 
+            lifecycle = google_play_lifecycle_fields(details, matching_items)
+            lifecycle_values = (
+                lifecycle["play_state"], lifecycle["auto_renewing"], lifecycle["cancel_time"],
+                lifecycle["latest_order_id"], now.isoformat(), lifecycle["acknowledgement_state"],
+                lifecycle["start_time"],
+            )
             if existing:
                 verify_db.execute(
                     """UPDATE premium SET plan=?,amount=?,payment_id=?,payment_status=?,start_date=COALESCE(start_date,?),
-                       end_date=?,status=? WHERE id=?""",
+                       end_date=?,status=?,play_state=?,auto_renewing=?,cancel_time=?,latest_order_id=?,
+                       last_checked_at=?,acknowledgement_state=?,start_time=? WHERE id=?""",
                     (
                         PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR, "google-play:" + product_id,
-                        state, now.isoformat(), expiry_dt.isoformat(), "active", int(existing["id"]),
+                        state, details.get("startTime") or now.isoformat(), expiry_dt.isoformat(),
+                        "active", *lifecycle_values, int(existing["id"]),
                     ),
                 )
             else:
                 verify_db.execute(
                     """INSERT INTO premium
-                       (user_id,plan,amount,payment_id,payment_status,start_date,end_date,status,subscription_id)
-                       VALUES(?,?,?,?,?,?,?,?,?)""",
+                       (user_id,plan,amount,payment_id,payment_status,start_date,end_date,status,subscription_id,
+                        play_state,auto_renewing,cancel_time,latest_order_id,last_checked_at,acknowledgement_state,start_time)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         int(data.user_id), PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR,
-                        "google-play:" + product_id, state, now.isoformat(),
-                        expiry_dt.isoformat(), "active", purchase_token,
+                        "google-play:" + product_id, state, details.get("startTime") or now.isoformat(),
+                        expiry_dt.isoformat(), "active", purchase_token, *lifecycle_values,
                     ),
                 )
             verify_db.execute("UPDATE users SET is_premium=1 WHERE id=?", (int(data.user_id),))
@@ -3275,6 +3317,75 @@ def admin_blocked_users():
         "blocks": blocks
 
     }
+
+@app.get("/admin/subscriptions")
+def admin_subscriptions():
+    """Admin-only subscription ledger; refresh Google Play state before returning rows."""
+    with sqlite3.connect(DB_PATH, timeout=20) as sub_db:
+        sub_db.row_factory = sqlite3.Row
+        rows = sub_db.execute("""
+            SELECT p.*, u.name, u.mobile, u.city
+            FROM premium p LEFT JOIN users u ON u.id=p.user_id
+            ORDER BY p.id DESC
+        """).fetchall()
+
+    # Refresh Google Play-backed rows so cancel/renewal/expiry changes made in Play
+    # Console are reflected on the next dashboard refresh. Never expose purchase tokens.
+    for row in rows:
+        token = row["subscription_id"]
+        if not token:
+            continue
+        try:
+            details = google_play_subscription_details(str(token))
+            items = [
+                item for item in (details.get("lineItems") or [])
+                if str(item.get("productId", "")) == GOOGLE_PLAY_PRODUCT_ID
+                and str((item.get("offerDetails") or {}).get("basePlanId", "")) == GOOGLE_PLAY_BASE_PLAN_ID
+            ]
+            if not items:
+                continue
+            expiry_text = max([str(x.get("expiryTime", "")) for x in items if x.get("expiryTime")] or [""])
+            expiry_dt = datetime.datetime.fromisoformat(expiry_text.replace("Z", "+00:00")) if expiry_text else None
+            if expiry_dt and expiry_dt.tzinfo is None:
+                expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
+            if expiry_dt:
+                expiry_dt = expiry_dt.astimezone(datetime.timezone.utc)
+            state = str(details.get("subscriptionState", "") or "")
+            life = google_play_lifecycle_fields(details, items)
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            active = state in {"SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"} and expiry_dt and expiry_dt > now_utc
+            status_value = "active" if active else ("expired" if expiry_dt and expiry_dt <= now_utc else state.replace("SUBSCRIPTION_STATE_", "").lower() or "unknown")
+            with sqlite3.connect(DB_PATH, timeout=10) as update_db:
+                update_db.execute("""
+                    UPDATE premium SET payment_status=?,play_state=?,auto_renewing=?,cancel_time=?,
+                    latest_order_id=?,last_checked_at=?,acknowledgement_state=?,start_time=?,
+                    end_date=COALESCE(?,end_date),status=? WHERE id=?
+                """, (
+                    state, life["play_state"], life["auto_renewing"], life["cancel_time"],
+                    life["latest_order_id"], now_utc.isoformat(), life["acknowledgement_state"],
+                    life["start_time"], expiry_dt.isoformat() if expiry_dt else None,
+                    status_value, int(row["id"])
+                ))
+                update_db.execute("UPDATE users SET is_premium=? WHERE id=?",
+                                  (1 if active else 0, int(row["user_id"])))
+                update_db.commit()
+        except Exception as exc:
+            print("Admin subscription refresh warning:", str(exc))
+            # Keep the last known record visible if Play API is temporarily unavailable.
+
+    with sqlite3.connect(DB_PATH, timeout=10) as sub_db:
+        sub_db.row_factory = sqlite3.Row
+        records = sub_db.execute("""
+            SELECT p.id,p.user_id,u.name,u.mobile,u.city,p.plan,p.amount,p.payment_id,
+                   p.payment_status,p.start_date,p.end_date,p.status,p.created_at,
+                   p.play_state,p.auto_renewing,p.cancel_time,p.latest_order_id,
+                   p.last_checked_at,p.acknowledgement_state,p.start_time,
+                   CASE WHEN p.subscription_id IS NULL OR p.subscription_id='' THEN 0 ELSE 1 END AS google_play_linked
+            FROM premium p LEFT JOIN users u ON u.id=p.user_id
+            ORDER BY p.id DESC
+        """).fetchall()
+    return {"status": True, "subscriptions": [dict(r) for r in records], "total": len(records)}
+
 
 @app.get("/admin/premium-users")
 def admin_premium_users():
