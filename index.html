@@ -843,6 +843,20 @@ body{background:radial-gradient(ellipse at 8% 12%,rgba(255,255,255,.48),transpar
 @media(prefers-reduced-motion:reduce){#pmLoveZoomImage{transition:none}}
 </style>
 
+
+<style id="pm-match-congrats-style">
+#pmMatchCongrats{position:fixed;inset:0;z-index:1000001;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(42,9,31,.52);backdrop-filter:blur(5px)}
+#pmMatchCongrats.show{display:flex}
+.pmCongratsCard{position:relative;overflow:hidden;width:min(100%,390px);text-align:center;padding:30px 22px 25px;border-radius:28px;background:linear-gradient(145deg,#fff,#fff0f6);box-shadow:0 20px 65px rgba(40,0,25,.35);animation:pmCongratsPop .48s cubic-bezier(.2,1.5,.4,1)}
+.pmCongratsCard h2{font-size:29px;color:#a51f5a;margin:8px 0}.pmCongratsCard p{color:#6f3d58;line-height:1.5}
+.pmCongratsHeart{font-size:52px;animation:pmHeartBeat .9s infinite}.pmConfetti{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.pmConfetti i{position:absolute;top:-15px;width:8px;height:13px;border-radius:3px;animation:pmConfettiFall 2.2s linear forwards}
+.pmCongratsClose{margin-top:17px;border:0;border-radius:14px;padding:12px 22px;background:linear-gradient(110deg,#ff416c,#9b245e);color:white;font-weight:800;font-size:15px}
+@keyframes pmCongratsPop{from{transform:scale(.55) rotate(-4deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+@keyframes pmHeartBeat{50%{transform:scale(1.16)}}
+@keyframes pmConfettiFall{to{transform:translateY(110vh) rotate(650deg);opacity:.2}}
+</style>
+
 </head>
 
 <body>
@@ -1213,7 +1227,7 @@ Welcome
 
 </h2>
 
-<p style="
+<p id="pmHomeTagline" style="
 font-size:16px;
 color:#f70b1a;
 margin-top:8px;
@@ -4159,7 +4173,7 @@ function pmSelectImage(el,url){document.getElementById("pmHeroImage").src=url;do
 function pmCloseProfile(){document.getElementById("pmProfileModal").classList.add("hidden")}
 async function pmSendInterest(id){const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/send-interest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sender_id:+uid,receiver_id:id})})).json();alert(d.message)}
 function pmStartChat(id,name){pmCloseProfile();currentReceiver=id;currentReceiverName=name;if(typeof showSection==="function")showSection("chat");if(typeof openChat==="function")openChat(id,name)}
-async function pmLoadMatches(){const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");if(!uid||!box)return;box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";try{const d=await (await fetch(PM_API+"/smart-matches/"+uid)).json();if(!d.status)return box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';if(!d.matches.length)return box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px"><div style="flex:1"><div style="font-size:19px;font-weight:800">${u.name} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${u.city||'—'}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${u.match_percent}% Match</div><div style="font-size:12px;color:#777">${(u.match_reasons||[]).join(' • ')||'Compatible profile'}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmOpenProfile(${u.id})">View Full Profile</button></div></div>`).join("")}catch(e){box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';pmRetryLater("smart_matches",pmLoadMatches);}}
+async function pmLoadMatches(){const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");if(!uid||!box)return;box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";try{const d=await (await fetch(PM_API+"/smart-matches/"+uid)).json();if(!d.status)return box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';if(!d.matches.length)return box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px"><div style="flex:1"><div style="font-size:19px;font-weight:800">${u.name} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${u.city||'—'}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${u.match_percent}% Match</div><div style="font-size:12px;color:#777">${(u.match_reasons||[]).join(' • ')||'Compatible profile'}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmCelebrateMatch(${Number(u.match_percent)||0});pmOpenProfile(${u.id})">View Full Profile</button></div></div>`).join("")}catch(e){box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';pmRetryLater("smart_matches",pmLoadMatches);}}
 window.loadMatches=pmLoadMatches;window.profileModalView=pmOpenProfile;window.viewProfile=viewProfile;
 const _pmLoadEdit=window.loadEditProfile;window.loadEditProfile=async function(){if(typeof _pmLoadEdit==='function')await _pmLoadEdit();pmLoadGallery()};
 window.interestAction=async function(interestId,status){try{const uid=localStorage.getItem('userId'),d=await (await fetch(PM_API+'/received-interests/'+uid)).json(),item=(d.interests||[]).find(x=>x.interest_id==interestId);if(!item)return;const r=await (await fetch(PM_API+'/respond-interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:+uid,other_id:item.sender_id,status})})).json();alert(r.message);if(typeof loadReceivedInterests==='function')loadReceivedInterests()}catch(e){pmQuietRetry('interest_action')}};
@@ -4315,7 +4329,22 @@ document.addEventListener("DOMContentLoaded", function(){
  function lang(){return localStorage.getItem(storageKey)||'en'}
  function translateText(text,code){const dict=D[code]||D.en;const raw=(text||'').trim();if(!raw)return text; if(dict[raw])return text.replace(raw,dict[raw]); return text;}
  function apply(code){code=languages.some(x=>x.id===code)?code:'en';localStorage.setItem(storageKey,code);document.documentElement.lang=code;document.documentElement.dir=code==='ur'?'rtl':'ltr';
-  const dict=D[code]||D.en;
+  const dict=D[code]||D.en; 
+  const taglineMap={
+    mr:'💕 प्रेम, विश्वास आणि आयुष्यभराची साथ.',
+    hi:'💕 प्यार, विश्वास और जीवनभर का साथ।',
+    en:'💕 Love, trust, and a lifetime together.',
+    pa:'💕 ਪਿਆਰ, ਭਰੋਸਾ ਅਤੇ ਸਾਰੀ ਜ਼ਿੰਦਗੀ ਦਾ ਸਾਥ।',
+    gu:'💕 પ્રેમ, વિશ્વાસ અને જીવનભરનો સાથ.',
+    bn:'💕 ভালোবাসা, বিশ্বাস আর সারাজীবনের সঙ্গ।',
+    ta:'💕 அன்பு, நம்பிக்கை, வாழ்நாள் முழுவதும் துணை.',
+    te:'💕 ప్రేమ, నమ్మకం, జీవితాంతం తోడు.',
+    kn:'💕 ಪ್ರೀತಿ, ನಂಬಿಕೆ ಮತ್ತು ಜೀವನಪೂರ್ತಿ ಜೊತೆಯಾಗಿ.',
+    ur:'💕 محبت، اعتماد اور زندگی بھر کا ساتھ۔'
+  };
+  const tagline=document.getElementById('pmHomeTagline');
+  if(tagline)tagline.textContent=taglineMap[code]||taglineMap.en;
+
   document.querySelectorAll('body *').forEach(el=>{if(el.closest('#pmLanguageGate'))return;if(el.children.length===0&&el.textContent.trim()){const old=el.getAttribute('data-pm-original-text')||el.textContent.trim();if(!el.hasAttribute('data-pm-original-text'))el.setAttribute('data-pm-original-text',old);const val=el.getAttribute('data-pm-original-text');if(dict[val])el.textContent=val.replace(val,dict[val]);}
    for(const attr of ['placeholder','title','aria-label']){if(el.hasAttribute(attr)){const original=el.getAttribute('data-pm-original-'+attr)||el.getAttribute(attr);if(!el.hasAttribute('data-pm-original-'+attr))el.setAttribute('data-pm-original-'+attr,original);if(dict[original])el.setAttribute(attr,dict[original]);}}
   });
@@ -4335,10 +4364,27 @@ document.addEventListener("DOMContentLoaded", function(){
  if(typeof originalShow==='function')window.showSection=function(page){if(!handling&&window.currentSection&&window.currentSection!==page){stack.push(window.currentSection);if(stack.length>30)stack.shift();try{history.pushState({premMilan:true,screen:page},'','#'+page)}catch(e){}}return originalShow.apply(this,arguments)};
  try{history.replaceState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));history.pushState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));}catch(e){}
  window.__pmLanguageBackHandlerInstalled=true;
- window.addEventListener('popstate',function(){handling=true;try{const menu=document.getElementById('sideMenu');if(menu&&menu.classList.contains('active')){if(typeof closeMenu==='function')closeMenu();return;}const chat=document.getElementById('chatBox');if(chat&&chat.style.display!=='none'){if(typeof closeChat==='function')closeChat();return;}const modal=document.getElementById('pmProfileModal');if(modal&&!modal.classList.contains('hidden')){if(typeof pmCloseProfile==='function')pmCloseProfile();return;}const prev=stack.pop();if(prev&&typeof originalShow==='function'){originalShow(prev);}else if(typeof originalShow==='function'){originalShow('home');}try{history.pushState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));}catch(e){}}finally{handling=false;}});
+ window.addEventListener('popstate',function(){handling=true;try{const zoom=document.getElementById('pmLovePhotoZoom');if(zoom&&zoom.classList.contains('show')){if(typeof pmCloseLoveZoom==='function')pmCloseLoveZoom();try{history.pushState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));}catch(e){}return;}const menu=document.getElementById('sideMenu');if(menu&&menu.classList.contains('active')){if(typeof closeMenu==='function')closeMenu();return;}const chat=document.getElementById('chatBox');if(chat&&chat.style.display!=='none'){if(typeof closeChat==='function')closeChat();return;}const modal=document.getElementById('pmProfileModal');if(modal&&!modal.classList.contains('hidden')){if(typeof pmCloseProfile==='function')pmCloseProfile();return;}const prev=stack.pop();if(prev&&typeof originalShow==='function'){originalShow(prev);}else if(typeof originalShow==='function'){originalShow('home');}try{history.pushState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));}catch(e){}}finally{handling=false;}});
 })();
 </script>
 
+
+<div id="pmMatchCongrats" role="dialog" aria-modal="true" aria-label="Match congratulations" onclick="if(event.target===this)pmCloseCongrats()">
+ <div class="pmCongratsCard"><div class="pmConfetti" id="pmCongratsConfetti"></div><div class="pmCongratsHeart">💖</div><h2>Congratulations!</h2><p>वाह! तुमची जोडी खूप छान जुळतेय!<br><b>एक सुंदर नात्याची सुरुवात होऊ शकते. 💕</b></p><button class="pmCongratsClose" type="button" onclick="pmCloseCongrats()">Continue ❤️</button></div>
+</div>
+<script id="pm-match-congrats-script">
+(function(){
+ window.pmCloseCongrats=function(){const el=document.getElementById('pmMatchCongrats');if(el)el.classList.remove('show')};
+ window.pmCelebrateMatch=function(percent){
+   if(!(Number(percent)>50))return;
+   const el=document.getElementById('pmMatchCongrats'),bits=document.getElementById('pmCongratsConfetti');if(!el||!bits)return;
+   bits.innerHTML='';const colors=['#ff416c','#e8b65a','#a855f7','#22c55e','#38bdf8','#fb7185'];
+   for(let i=0;i<65;i++){const b=document.createElement('i');b.style.left=(Math.random()*100)+'%';b.style.background=colors[i%colors.length];b.style.animationDelay=(Math.random()*.8)+'s';b.style.animationDuration=(1.5+Math.random()*1.4)+'s';b.style.transform='rotate('+(Math.random()*180)+'deg)';bits.appendChild(b)}
+   el.classList.add('show');clearTimeout(window.__pmCongratsTimer);window.__pmCongratsTimer=setTimeout(window.pmCloseCongrats,3800);
+ };
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')window.pmCloseCongrats()});
+})();
+</script>
 
 <div id="pmLovePhotoZoom" class="pmLovePhotoZoom" role="dialog" aria-modal="true" aria-label="Photo viewer" onclick="if(event.target===this)pmCloseLoveZoom()">
   <div class="pmLoveZoomTop">
