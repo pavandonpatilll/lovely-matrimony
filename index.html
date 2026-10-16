@@ -809,6 +809,40 @@ input,select,textarea,button{max-width:100%;min-width:0}
 @media(max-width:380px){.pmEditProfileButton{width:calc(100% - 16px);font-size:14px}}
 </style>
 
+
+<style id="pm-love-poster-theme">
+/* Prem Milan: soft romantic poster styling; preserves existing layouts and controls */
+:root{--pm-rose:#ff416c;--pm-berry:#8f245e;--pm-blush:#fff0f5;--pm-gold:#e8b65a}
+body{background:radial-gradient(ellipse at 8% 12%,rgba(255,255,255,.48),transparent 28%),radial-gradient(ellipse at 92% 30%,rgba(255,215,230,.48),transparent 30%),linear-gradient(145deg,#ff7897 0%,#ffd2df 46%,#eadbff 100%);background-attachment:fixed}
+.topBar{background:linear-gradient(110deg,#8f245e 0%,#e73570 54%,#ff7798 100%);box-shadow:0 7px 24px rgba(143,36,94,.22)}
+.appTitle{text-shadow:0 2px 12px rgba(65,0,30,.2);letter-spacing:.2px}
+.welcomeCard,.profileStatus,.pmFullPage,.pmPlanCard{border:1px solid rgba(255,255,255,.82);box-shadow:0 12px 32px rgba(143,36,94,.11)}
+.welcomeCard{background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(255,242,247,.97));position:relative;overflow:hidden}
+.welcomeCard:after{content:"♡  ♡  ♡";position:absolute;right:12px;top:8px;color:rgba(226,54,111,.14);font-size:25px;letter-spacing:6px;pointer-events:none}
+.homeContent h2,.homeContent h3{color:#8f245e}
+.btn{background:linear-gradient(110deg,#ff416c,#b52b78);box-shadow:0 6px 15px rgba(204,38,94,.14);font-weight:700}
+.btn:active,.pmPremiumBuy:active{transform:scale(.985)}
+.menuItem{border:1px solid #fff0f5;background:linear-gradient(100deg,#fff,#fff7fa)}
+.bottomNav{background:rgba(255,255,255,.96);backdrop-filter:blur(14px);border-top:1px solid #ffe0e9}
+.navItem.active{color:#b32768}
+.pmFullPage{background:linear-gradient(145deg,#fff 0%,#fff6fa 60%,#f8f1ff 100%)}
+.pmFullHero{box-shadow:0 12px 28px rgba(75,20,48,.16)}
+.pmFullCard{background:linear-gradient(145deg,#fff,#fff7fa);border:1px solid #ffe0e9;border-radius:20px;box-shadow:0 9px 24px rgba(143,36,94,.08)}
+.pmFullItem{border:1px solid #f8dce6!important;background:rgba(255,255,255,.9)!important;border-radius:13px}
+.pmFullAbout{background:linear-gradient(120deg,#fff0f5,#f8f0ff)!important;border:1px solid #f5d7e5}
+.pmFullInterest{background:linear-gradient(110deg,#ff416c,#b52b78)!important;box-shadow:0 7px 16px rgba(204,38,94,.18)}
+.pmFullChat{background:#fff0f5!important;color:#9a245c!important;border:1px solid #f5cddd!important}
+.pmInlineState{background:rgba(255,255,255,.92);border:1px solid #ffe0e9;border-radius:18px;padding:22px;color:#8f245e}
+.pmLovePhotoZoom{position:fixed;inset:0;z-index:100000;background:rgba(23,8,20,.94);display:none;align-items:center;justify-content:center;flex-direction:column;padding:14px;touch-action:pan-y}
+.pmLovePhotoZoom.show{display:flex}
+.pmLoveZoomTop{width:min(100%,900px);display:flex;justify-content:space-between;align-items:center;color:#fff;font-weight:800;padding:4px 2px 12px}
+.pmLoveZoomControls{display:flex;gap:8px;align-items:center}
+.pmLoveZoomControls button{border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.14);color:#fff;border-radius:13px;min-width:40px;min-height:40px;font-size:20px;font-weight:800;cursor:pointer}
+#pmLoveZoomImage{display:block;max-width:100%;max-height:calc(100dvh - 105px);width:auto;height:auto;object-fit:contain;border-radius:12px;transform:scale(1);transform-origin:center center;transition:transform .12s ease;touch-action:pinch-zoom;user-select:none;-webkit-user-drag:none}
+.pmLoveZoomHint{color:rgba(255,255,255,.75);font-size:12px;text-align:center;padding:10px 0 0}
+@media(prefers-reduced-motion:reduce){#pmLoveZoomImage{transition:none}}
+</style>
+
 </head>
 
 <body>
@@ -4302,6 +4336,60 @@ document.addEventListener("DOMContentLoaded", function(){
  try{history.replaceState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));history.pushState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));}catch(e){}
  window.__pmLanguageBackHandlerInstalled=true;
  window.addEventListener('popstate',function(){handling=true;try{const menu=document.getElementById('sideMenu');if(menu&&menu.classList.contains('active')){if(typeof closeMenu==='function')closeMenu();return;}const chat=document.getElementById('chatBox');if(chat&&chat.style.display!=='none'){if(typeof closeChat==='function')closeChat();return;}const modal=document.getElementById('pmProfileModal');if(modal&&!modal.classList.contains('hidden')){if(typeof pmCloseProfile==='function')pmCloseProfile();return;}const prev=stack.pop();if(prev&&typeof originalShow==='function'){originalShow(prev);}else if(typeof originalShow==='function'){originalShow('home');}try{history.pushState({premMilan:true,screen:window.currentSection||'home'},'','#'+(window.currentSection||'home'));}catch(e){}}finally{handling=false;}});
+})();
+</script>
+
+
+<div id="pmLovePhotoZoom" class="pmLovePhotoZoom" role="dialog" aria-modal="true" aria-label="Photo viewer" onclick="if(event.target===this)pmCloseLoveZoom()">
+  <div class="pmLoveZoomTop">
+    <span>💗 Photo Gallery</span>
+    <div class="pmLoveZoomControls">
+      <button type="button" aria-label="Zoom out" onclick="pmLoveZoomBy(-0.25)">−</button>
+      <button type="button" aria-label="Reset zoom" onclick="pmLoveZoomReset()">↺</button>
+      <button type="button" aria-label="Zoom in" onclick="pmLoveZoomBy(0.25)">＋</button>
+      <button type="button" aria-label="Close photo" onclick="pmCloseLoveZoom()">✕</button>
+    </div>
+  </div>
+  <img id="pmLoveZoomImage" alt="Profile photo enlarged">
+  <div class="pmLoveZoomHint">Pinch to zoom on phone · Use + / − · Tap outside or ✕ to close</div>
+</div>
+<script id="pm-love-photo-zoom-script">
+(function(){
+  let scale=1;
+  const viewer=()=>document.getElementById('pmLovePhotoZoom');
+  const image=()=>document.getElementById('pmLoveZoomImage');
+  window.pmOpenLoveZoom=function(src,alt){
+    if(!src)return;
+    const v=viewer(),im=image();if(!v||!im)return;
+    im.src=src;im.alt=alt||'Profile photo enlarged';scale=1;im.style.transform='scale(1)';
+    v.classList.add('show');document.body.style.overflow='hidden';
+  };
+  window.pmCloseLoveZoom=function(){
+    const v=viewer();if(v)v.classList.remove('show');
+    document.body.style.overflow='';
+    const im=image();if(im){im.src='';im.style.transform='scale(1)';}
+    scale=1;
+  };
+  window.pmLoveZoomBy=function(delta){
+    scale=Math.max(1,Math.min(4,scale+delta));
+    const im=image();if(im)im.style.transform='scale('+scale+')';
+  };
+  window.pmLoveZoomReset=function(){scale=1;const im=image();if(im)im.style.transform='scale(1)';};
+  document.addEventListener('click',function(e){
+    const target=e.target;
+    if(!(target instanceof HTMLImageElement))return;
+    if(target.closest('#pmLovePhotoZoom'))return;
+    const canZoom=target.matches('#userProfileMainPhoto,#profilePhoto,#homeProfile,.pmFullThumbs img,.pmHero img,.pmThumbs img,.pmPhotoItem img');
+    if(!canZoom)return;
+    const src=target.currentSrc||target.src;
+    if(src && !src.endsWith('/'))window.pmOpenLoveZoom(src,target.alt||'Prem Milan profile photo');
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape')window.pmCloseLoveZoom();
+    if(!viewer()?.classList.contains('show'))return;
+    if(e.key==='+ '||e.key==='=')window.pmLoveZoomBy(.25);
+    if(e.key==='-')window.pmLoveZoomBy(-.25);
+  });
 })();
 </script>
 
