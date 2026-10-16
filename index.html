@@ -628,7 +628,8 @@ button,input,select,textarea{font:inherit;max-width:100%;}
 .pmMsg.mine{background:#ff4d6d;color:#fff;border-bottom-right-radius:5px;}
 .pmMsg.other{background:#fff;color:#222;border-bottom-left-radius:5px;}
 .pmReplyQuote{background:rgba(0,0,0,.08);border-left:3px solid currentColor;padding:6px 8px;border-radius:8px;margin-bottom:6px;font-size:12px;opacity:.9;}
-.pmActionRow{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px;}
+.pmActionRow{display:none!important;gap:5px;align-items:center;flex-wrap:wrap;margin-top:6px;}
+.pmMsgMeta{display:flex;justify-content:flex-end;margin-top:4px;min-height:12px}.pmMsgMeta .pmSendState{font-size:11px;opacity:.85}
 .pmActionRow button{border:0;background:rgba(255,255,255,.82);border-radius:10px;padding:3px 7px;font-size:14px;cursor:pointer;}
 .pmReactions{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;}
 .pmReactionChip{background:#fff;border:1px solid #eee;border-radius:12px;padding:2px 6px;font-size:12px;color:#222;}
@@ -971,12 +972,12 @@ placeholder="Education">
 <input
 id="occupation"
 class="input"
-placeholder="Occupation">
+placeholder="Occupation (Optional)">
 
 <textarea
 id="about"
 class="input"
-placeholder="Tell something about yourself..."
+placeholder="Tell something about yourself... (Optional)"
 style="height:100px;resize:none;"></textarea>
 
 
@@ -2608,13 +2609,13 @@ function hideChatQuickMenu(){
   pmQuickMessageId=null;pmQuickMessageText="";
 }
 
-function showChatQuickMenu(ev,id,text){
+function showChatQuickMenu(ev,id,text,canDelete=false){
   if(ev){ev.preventDefault();ev.stopPropagation();}
   pmQuickMessageId=Number(id);pmQuickMessageText=String(text||"Photo");
   const menu=document.getElementById("chatQuickMenu");
   if(!menu)return;
   const reactions=["❤️","👍","😂","😮","😢","🙏"];
-  menu.innerHTML=reactions.map(r=>`<button type="button" title="${r}" onclick="quickReact('${r}')">${r}</button>`).join("")+`<button type="button" title="Reply" onclick="quickReply()">↩️</button>`;
+  menu.innerHTML=reactions.map(r=>`<button type="button" title="${r}" onclick="quickReact('${r}')">${r}</button>`).join("")+`<button type="button" title="Reply" onclick="quickReply()">↩️</button>`+(canDelete?`<button type="button" title="Delete message" onclick="quickDelete()">🗑️</button>`:"");
   const x=Math.min((ev?.clientX||window.innerWidth/2),window.innerWidth-300);
   const y=Math.min((ev?.clientY||window.innerHeight/2),window.innerHeight-60);
   menu.style.left=Math.max(8,x-125)+"px";
@@ -2626,6 +2627,9 @@ function quickReact(reaction){
 }
 function quickReply(){
   const id=pmQuickMessageId,text=pmQuickMessageText;hideChatQuickMenu();if(id)startChatReply(id,text);
+}
+function quickDelete(){
+  const id=pmQuickMessageId;hideChatQuickMenu();if(id)deleteChatMessage(id);
 }
 
 document.addEventListener("click",e=>{
@@ -2661,7 +2665,7 @@ function bindChatGestures(){
   box.addEventListener("contextmenu",e=>{
     const bubble=e.target.closest(".pmMsg");
     if(!bubble)return;
-    showChatQuickMenu(e,Number(bubble.dataset.messageId),bubble.dataset.messageText||"Photo");
+    showChatQuickMenu(e,Number(bubble.dataset.messageId),bubble.dataset.messageText||"Photo",bubble.dataset.messageMine==="1");
   });
   box.addEventListener("touchstart",e=>{
     const bubble=e.target.closest(".pmMsg");
@@ -2669,7 +2673,7 @@ function bindChatGestures(){
     const t=e.touches[0];currentBubble=bubble;startX=t.clientX;startY=t.clientY;swiping=false;
     clearTimeout(pressTimer);
     pressTimer=setTimeout(()=>{
-      if(!swiping){bubble.classList.add("pmLongPress");showChatQuickMenu({clientX:t.clientX,clientY:t.clientY,preventDefault(){},stopPropagation(){}},Number(bubble.dataset.messageId),bubble.dataset.messageText||"Photo");setTimeout(()=>bubble.classList.remove("pmLongPress"),250);}
+      if(!swiping){bubble.classList.add("pmLongPress");showChatQuickMenu({clientX:t.clientX,clientY:t.clientY,preventDefault(){},stopPropagation(){}},Number(bubble.dataset.messageId),bubble.dataset.messageText||"Photo",bubble.dataset.messageMine==="1");setTimeout(()=>bubble.classList.remove("pmLongPress"),250);}
     },550);
   },{passive:true});
   box.addEventListener("touchmove",e=>{
@@ -2719,17 +2723,17 @@ async function loadChat(silent=false){
       const replyText=JSON.stringify(rawText);
       const state=mine?`<span class="pmSendState">${msg.is_read?"✓✓ Seen":"✓ Sent"}</span>`:"";
       html+=`<div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:7px 0;">
-        <div class="pmMsg ${mine?'mine':'other'}" data-message-id="${msg.id}" data-message-text="${escapeHtml(rawText)}">
+        <div class="pmMsg ${mine?'mine':'other'}" data-message-id="${msg.id}" data-message-text="${escapeHtml(rawText)}" data-message-mine="${mine?'1':'0'}">
           <span class="pmSwipeHint">↩</span>
           ${replied?`<div class="pmReplyQuote">↩ ${escapeHtml(replied.message==='[Photo]'?'Photo':replied.message)}</div>`:''}
           ${media?`<img class="pmMsgImg" src="${media}" loading="lazy" decoding="async" alt="Photo" onclick="window.open('${media}','_blank')">`:''}
           ${text?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;white-space:pre-wrap;">${text}</div>`:''}
           ${reactionHtml?`<div class="pmReactions">${reactionHtml}</div>`:''}
+          ${state?`<div class="pmMsgMeta">${state}</div>`:''}
           <div class="pmActionRow">
             <button type="button" onclick="replyFromChatButton(this)">↩ Reply</button>
             <button type="button" onclick="reactMenuFromChatButton(this,event)">😊 React</button>
             ${mine?`<button type="button" onclick="deleteChatMessage(${msg.id})">🗑 Delete</button>`:''}
-            ${state}
           </div>
         </div>
       </div>`;
@@ -3598,8 +3602,23 @@ const name=document.getElementById("fullName").value.trim();
 const mobile=document.getElementById("mobile").value.trim();
 const pass=document.getElementById("pass").value;
 const cpass=document.getElementById("cpass").value;
-if(name==="")return alert("Please enter your name.");
+if(name==="")return alert("Please enter your full name.");
 if(!/^[0-9]{10}$/.test(mobile))return alert("Please enter a valid 10-digit mobile number.");
+const requiredFields=[
+  ["gender","Please select your gender."],
+  ["lookingFor","Please select who you are looking for."],
+  ["dob","Please enter your date of birth."],
+  ["height","Please enter your height."],
+  ["religion","Please enter your religion."],
+  ["caste","Please enter your caste."],
+  ["education","Please enter your education."]
+];
+for(const [id,message] of requiredFields){
+  const field=document.getElementById(id);
+  if(!field||!String(field.value||"").trim())return alert(message);
+}
+if(!document.getElementById("age").value||Number(document.getElementById("age").value)<18)return alert("Registration is available only for users aged 18 or above. Please enter a valid date of birth.");
+if(!document.getElementById("photo").files||!document.getElementById("photo").files.length)return alert("Please choose a profile photo.");
 if(pass.length<6)return alert("Password must be at least 6 characters.");
 if(pass!==cpass)return alert("Passwords do not match.");
 const userData={
