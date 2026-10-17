@@ -1101,6 +1101,35 @@ def ensure_pair_available(user_a, user_b):
         return False, "This account is unavailable."
     if users_blocked(user_a, user_b):
         return False, "Chat is blocked between these users."
+
+    # Mature profiles (women 30+, men 35+) are contactable only through
+    # the separate Private Dating plan, never through ordinary Premium.
+    db = None
+    try:
+        db = sqlite3.connect(DB_PATH, timeout=10)
+        db.row_factory = sqlite3.Row
+        a = db.execute("SELECT id,gender,age FROM users WHERE id=? AND COALESCE(is_deleted,0)=0", (int(user_a),)).fetchone()
+        b = db.execute("SELECT id,gender,age FROM users WHERE id=? AND COALESCE(is_deleted,0)=0", (int(user_b),)).fetchone()
+        if not a or not b:
+            return False, "This profile is unavailable."
+        a_mature = is_private_dating_profile(a)
+        b_mature = is_private_dating_profile(b)
+        if a_mature or b_mature:
+            # Subscriber must be the non-mature member and match the intended audience:
+            # male member -> mature women; female member -> mature men.
+            subscriber_id = int(user_b) if a_mature and not b_mature else int(user_a) if b_mature and not a_mature else 0
+            subscriber = b if subscriber_id == int(user_b) else a if subscriber_id == int(user_a) else None
+            if not subscriber or is_private_dating_profile(subscriber) or not private_dating_active(subscriber_id):
+                return False, "Private Dating ₹59/month is required to contact these profiles."
+            sg = str(subscriber["gender"] or "").strip().lower()
+            target = a if a_mature else b
+            tg = str(target["gender"] or "").strip().lower()
+            allowed = (sg in ("male", "m") and tg in ("female", "f") and int(target["age"] or 0) >= 30) or (sg in ("female", "f") and tg in ("male", "m") and int(target["age"] or 0) >= 35)
+            if not allowed:
+                return False, "This Private Dating profile is not available for your account."
+    finally:
+        if db is not None:
+            db.close()
     return True, ""
 
 # =====================================================
@@ -2080,9 +2109,6 @@ def sent_interests(user_id:int):
 
 def send_message(data: MessageModel):
 
-    if not user_has_premium(data.sender_id):
-        return {"status": False, "premium_required": True, "message": "Chat Premium members ke liye hai. Premium activate karein ❤️"}
-
     if data.sender_id == data.receiver_id:
 
         return{
@@ -2096,6 +2122,18 @@ def send_message(data: MessageModel):
     available, reason = ensure_pair_available(data.sender_id, data.receiver_id)
     if not available:
         return {"status":False,"message":reason,"blocked":True}
+    # Existing ₹15 Premium still unlocks regular chat. Private Dating independently
+    # unlocks chat with eligible mature profiles, without forcing a second subscription.
+    if not user_has_premium(data.sender_id):
+        db = sqlite3.connect(DB_PATH, timeout=10); db.row_factory = sqlite3.Row
+        try:
+            receiver = db.execute("SELECT gender,age FROM users WHERE id=?", (int(data.receiver_id),)).fetchone()
+            sender = db.execute("SELECT gender,age FROM users WHERE id=?", (int(data.sender_id),)).fetchone()
+            private_chat = bool(receiver and sender and (is_private_dating_profile(receiver) or is_private_dating_profile(sender)) and private_dating_active(data.sender_id))
+        finally:
+            db.close()
+        if not private_chat:
+            return {"status":False,"premium_required":True,"message":"Regular chat ke liye Premium ₹15/month chahiye. Mature profiles ke liye Private Dating ₹59/month chahiye."}
 
     cursor.execute(
 
@@ -2235,12 +2273,19 @@ def delete_message(message_id:int, user_id:int):
 
 def get_chat(sender_id:int,receiver_id:int):
 
-    if not user_has_premium(sender_id):
-        return {"status": False, "premium_required": True, "message": "Chat Premium members ke liye hai.", "messages": []}
-
     available, reason = ensure_pair_available(sender_id, receiver_id)
     if not available:
         return {"status":True,"blocked":True,"message":reason,"messages":[]}
+    if not user_has_premium(sender_id):
+        db = sqlite3.connect(DB_PATH, timeout=10); db.row_factory = sqlite3.Row
+        try:
+            receiver = db.execute("SELECT gender,age FROM users WHERE id=?", (int(receiver_id),)).fetchone()
+            sender = db.execute("SELECT gender,age FROM users WHERE id=?", (int(sender_id),)).fetchone()
+            private_chat = bool(receiver and sender and (is_private_dating_profile(receiver) or is_private_dating_profile(sender)) and private_dating_active(sender_id))
+        finally:
+            db.close()
+        if not private_chat:
+            return {"status":False,"premium_required":True,"message":"Regular chat ke liye Premium ₹15/month chahiye. Mature profiles ke liye Private Dating ₹59/month chahiye.","messages":[]}
 
     cursor.execute(
 
@@ -3732,6 +3777,9 @@ def smart_matches(user_id:int):
         SELECT id,name,gender,age,height,religion,caste,education,occupation,city,state,country,photo,is_verified
         FROM users
         WHERE id!=? AND lower(trim(coalesce(gender,'')))=?
+          AND NOT ((lower(trim(coalesce(gender,''))) IN ('female','f') AND CAST(coalesce(age,0) AS INTEGER)>=30)
+                   OR (lower(trim(coalesce(gender,''))) IN ('male','m') AND CAST(coalesce(age,0) AS INTEGER)>=35)
+                   OR COALESCE(is_deleted,0)!=0)
         ORDER BY id DESC
         LIMIT 60
     """,(user_id,wanted_gender))
