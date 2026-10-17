@@ -562,6 +562,25 @@ try:
 except Exception as _e:
     print("Chat media migration warning:", _e)
 
+# Add reply references and persistent per-user chat reactions without deleting existing chats.
+try:
+    cursor.execute("PRAGMA table_info(messages)")
+    _cols = {row[1] for row in cursor.fetchall()}
+    if "reply_to_id" not in _cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS message_reactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        reaction TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(message_id,user_id)
+    )""")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_reactions_message ON message_reactions(message_id)")
+    conn.commit()
+except Exception as _e:
+    print("Chat reply/reaction migration warning:", _e)
+
 # =====================================================
 # NOTIFICATIONS TABLE
 # =====================================================
@@ -915,6 +934,13 @@ class MessageModel(BaseModel):
     sender_id: int
     receiver_id: int
     message: str
+    reply_to_id: int | None = None
+
+
+class MessageReactionModel(BaseModel):
+    message_id: int
+    user_id: int
+    reaction: str
 
 
 class PremiumModel(BaseModel):
@@ -2140,20 +2166,8 @@ def send_message(data: MessageModel):
         """
 
         INSERT INTO messages(
-
-        sender_id,
-
-        receiver_id,
-
-        message
-
-        )
-
-        VALUES(
-
-        ?,?,?
-
-        )
+        sender_id, receiver_id, message, reply_to_id
+        ) VALUES(?,?,?,?)
 
         """,
 
@@ -2163,10 +2177,8 @@ def send_message(data: MessageModel):
 
             data.receiver_id,
 
-            data.message
-
+            data.message, data.reply_to_id
         )
-
     )
 
     conn.commit()
@@ -2265,6 +2277,24 @@ def delete_message(message_id:int, user_id:int):
 
     return {"status":True,"message":"Message deleted"}
 
+@app.post("/message-reaction")
+def message_reaction(data: MessageReactionModel):
+    if not ensure_active_user(data.user_id):
+        return {"status":False,"message":"Please sign in again."}
+    allowed={"❤️","👍","😂","😮","😢","🙏"}
+    if data.reaction not in allowed:
+        return {"status":False,"message":"Reaction not allowed."}
+    cursor.execute("SELECT id,sender_id,receiver_id FROM messages WHERE id=?",(data.message_id,))
+    msg=cursor.fetchone()
+    if not msg or data.user_id not in (int(msg["sender_id"]),int(msg["receiver_id"])):
+        return {"status":False,"message":"Message not found in this chat."}
+    cursor.execute("""INSERT INTO message_reactions(message_id,user_id,reaction) VALUES(?,?,?)
+        ON CONFLICT(message_id,user_id) DO UPDATE SET reaction=excluded.reaction,created_at=CURRENT_TIMESTAMP""",
+        (data.message_id,data.user_id,data.reaction))
+    conn.commit()
+    return {"status":True,"message":"Reaction saved","reaction":data.reaction}
+
+
 # =====================================================
 # CHAT HISTORY
 # =====================================================
@@ -2318,15 +2348,21 @@ def get_chat(sender_id:int,receiver_id:int):
     )
 
     chats=cursor.fetchall()
-
-    return{
-
-        "status":True,
-        "blocked":False,
-
-        "messages":[dict(row) for row in chats]
-
-    }
+    message_rows=[dict(row) for row in chats]
+    ids=[int(m["id"]) for m in message_rows]
+    by_id={int(m["id"]):m for m in message_rows}
+    if ids:
+        placeholders=",".join("?" for _ in ids)
+        cursor.execute(f"SELECT message_id,user_id,reaction FROM message_reactions WHERE message_id IN ({placeholders})",ids)
+        reaction_map={}
+        for rr in cursor.fetchall():
+            reaction_map.setdefault(int(rr["message_id"]),[]).append(dict(rr))
+        for msg in message_rows:
+            msg["reactions"]=reaction_map.get(int(msg["id"]),[])
+            rid=msg.get("reply_to_id")
+            original=by_id.get(int(rid)) if rid else None
+            msg["reply_to"]={"id":original["id"],"message":original.get("message") or "[Photo]"} if original else None
+    return {"status":True,"blocked":False,"messages":message_rows}
 
 
 # =====================================================

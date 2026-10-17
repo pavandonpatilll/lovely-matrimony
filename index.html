@@ -872,6 +872,9 @@ body{background:radial-gradient(ellipse at 8% 12%,rgba(255,255,255,.48),transpar
 </head>
 
 <body>
+<div id="pmInAppNotice" role="status" aria-live="polite" style="display:none;position:fixed;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(92vw,440px);z-index:1000002;background:linear-gradient(120deg,#fff,#fff0f5);border:1px solid #ffc5d5;border-radius:16px;padding:13px 15px;box-shadow:0 12px 35px #4b123033;cursor:pointer;color:#4b1233">
+ <div id="pmInAppNoticeTitle" style="font-weight:900;color:#b21f50;margin-bottom:4px"></div><div id="pmInAppNoticeText" style="font-size:13px;line-height:1.4"></div>
+</div>
 <script>
 window.PM_API="https://lovely-matrimony-q4vn.onrender.com";
 window.__pmNativeFetch=window.fetch.bind(window);
@@ -2389,6 +2392,27 @@ pmQuietRetry("server");
 
 }
 
+let pmSeenNotificationIds=new Set();
+let pmNoticeTimer=null;
+let pmNotificationPollTimer=null;
+function pmShowInAppNotice(item){
+ const el=document.getElementById("pmInAppNotice");if(!el)return;
+ document.getElementById("pmInAppNoticeTitle").textContent=String(item.title||"Prem Milan notification");
+ document.getElementById("pmInAppNoticeText").textContent=String(item.message||"");
+ el.style.display="block";clearTimeout(pmNoticeTimer);pmNoticeTimer=setTimeout(()=>{el.style.display="none";},5500);
+ el.onclick=()=>{el.style.display="none";showSection("notification");loadNotifications();};
+}
+async function pmPollInAppNotifications(initial=false){
+ const uid=Number(localStorage.getItem("userId")||0);if(!uid||document.visibilityState==="hidden")return;
+ try{const data=await window.pmApiFetch("/notifications/"+uid,{cache:"no-store"},0);if(!data.status)return;
+ const list=data.notifications||[];if(initial||pmSeenNotificationIds.size===0){pmSeenNotificationIds=new Set(list.map(n=>Number(n.id)));return;}
+ const fresh=list.filter(n=>!pmSeenNotificationIds.has(Number(n.id))).reverse();
+ list.forEach(n=>pmSeenNotificationIds.add(Number(n.id)));
+ fresh.forEach((n,i)=>setTimeout(()=>pmShowInAppNotice(n),i*350));
+ }catch(e){console.log("in-app notifications",e);}
+}
+function pmStartNotificationPolling(){if(pmNotificationPollTimer)return;pmPollInAppNotifications(true);pmNotificationPollTimer=setInterval(()=>pmPollInAppNotifications(false),5000);}
+
 async function loadNotifications(){
 
 const userId=localStorage.getItem("userId");
@@ -2788,6 +2812,7 @@ document.addEventListener("click",e=>{
 
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"){
+    pmPollInAppNotifications(false);
     pulsePresence();
     if(currentReceiver){loadChat(true);refreshChatPresence();}
   }else{
@@ -2845,6 +2870,15 @@ function bindChatGestures(){
   },{passive:true});
 }
 
+function pmJumpToMessage(id){
+ const box=document.getElementById("chatMessages");if(!box||!id)return;
+ const target=box.querySelector(`.pmMsg[data-message-id="${Number(id)}"]`);
+ if(!target){if(currentReceiver)loadChat(true).then(()=>setTimeout(()=>pmJumpToMessage(id),120));return;}
+ target.scrollIntoView({behavior:"smooth",block:"center"});
+ target.style.outline="3px solid #ffb2c5";target.style.outlineOffset="3px";
+ setTimeout(()=>{target.style.outline="";target.style.outlineOffset="";},1600);
+}
+
 async function loadChat(silent=false){
   const senderId=parseInt(localStorage.getItem("userId")||"0");
   if(!senderId||!currentReceiver)return;
@@ -2874,7 +2908,7 @@ async function loadChat(silent=false){
       html+=`<div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin:7px 0;">
         <div class="pmMsg ${mine?'mine':'other'}" data-message-id="${msg.id}" data-message-text="${escapeHtml(rawText)}" data-message-mine="${mine?'1':'0'}">
           <span class="pmSwipeHint">↩</span>
-          ${replied?`<div class="pmReplyQuote">↩ ${escapeHtml(replied.message==='[Photo]'?'Photo':replied.message)}</div>`:''}
+          ${replied?`<div class="pmReplyQuote" role="button" tabindex="0" title="Jump to replied message" onclick="pmJumpToMessage(${Number(replied.id)||0})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pmJumpToMessage(${Number(replied.id)||0})}">↩ ${escapeHtml(replied.message==='[Photo]'?'Photo':replied.message)}</div>`:''}
           ${media?`<img class="pmMsgImg" src="${media}" loading="lazy" decoding="async" alt="Photo" onclick="window.open('${media}','_blank')">`:''}
           ${text?`<div style="margin-top:${media?'7px':'0'};word-break:break-word;white-space:pre-wrap;">${text}</div>`:''}
           ${reactionHtml?`<div class="pmReactions">${reactionHtml}</div>`:''}
@@ -4254,6 +4288,8 @@ async function pmGuardedAutoLogin(){
 
 pmGuardedAutoLogin();
 setInterval(pmAccountGuard,30000);
+setInterval(()=>{if(localStorage.getItem("userId"))pmStartNotificationPolling();},60000);
+
 setInterval(()=>{ if(document.visibilityState!=="hidden") pulsePresence(); },10000);
 pulsePresence();
 
@@ -4540,6 +4576,8 @@ document.addEventListener("DOMContentLoaded", function(){
 })();
 </script>
 
+
+window.addEventListener("load",()=>{if(localStorage.getItem("userId"))pmStartNotificationPolling();});
 </body>
 
 </html>
