@@ -65,6 +65,10 @@ GOOGLE_PLAY_PRODUCT_ID = "prem_milan_premium"
 GOOGLE_PLAY_BASE_PLAN_ID = "monthly-15-inr"
 PREMIUM_AMOUNT_INR = 15
 PREMIUM_PLAN_LABEL = "Prem Milan Premium Monthly"
+PRIVATE_DATING_PRODUCT_ID = "private_dating_59"
+PRIVATE_DATING_BASE_PLAN_ID = "monthly-59-inr"
+PRIVATE_DATING_AMOUNT_INR = 59
+PRIVATE_DATING_PLAN_LABEL = "Prem Milan Private Dating Monthly"
 
 
 # =====================================================
@@ -97,7 +101,7 @@ async def firebase_mirror_middleware(request, call_next):
         "/favorite", "/remove-favorite", "/premium",
         "/upload-profile-photo", "/upload-profile-photos",
         "/delete-profile-photo", "/set-main-photo",
-        "/delete-account"
+        "/verify-private-dating-subscription", "/delete-account"
     }
     if request.method in {"POST", "PUT", "PATCH", "DELETE"} and (request.url.path in sync_paths or request.url.path.startswith("/admin/")):
         firebase_sync_async()
@@ -770,6 +774,15 @@ try:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_premium_user_status_expiry ON premium(user_id,status,end_date)")
 except Exception:
     pass
+
+# Private Dating entitlements are kept separate from the existing ₹15 Premium plan.
+cursor.execute("""CREATE TABLE IF NOT EXISTS private_dating_subscriptions(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, product_id TEXT NOT NULL,
+    base_plan_id TEXT NOT NULL, amount REAL NOT NULL, purchase_token TEXT UNIQUE NOT NULL,
+    status TEXT NOT NULL, start_date TEXT, end_date TEXT, play_state TEXT, auto_renewing INTEGER,
+    cancel_time TEXT, latest_order_id TEXT, last_checked_at TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)""")
+conn.commit()
 
 try:
     cursor.execute("ALTER TABLE blocks ADD COLUMN reason TEXT")
@@ -1743,6 +1756,10 @@ def search_users(data: SearchModel):
     FROM users
 
     WHERE id != ? AND COALESCE(is_deleted,0)=0
+      AND NOT (
+        (lower(trim(coalesce(gender,''))) IN ('female','f') AND CAST(coalesce(age,0) AS INTEGER) >= 30)
+        OR (lower(trim(coalesce(gender,''))) IN ('male','m') AND CAST(coalesce(age,0) AS INTEGER) >= 35)
+      )
 
     """
 
@@ -3080,6 +3097,96 @@ def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
         raise HTTPException(status_code=500, detail="Could not verify the Google Play subscription. Premium was not activated.")
 
 
+class PrivateDatingVerifyModel(BaseModel):
+    user_id: int
+    product_id: str
+    purchase_token: str
+
+
+def is_private_dating_profile(row):
+    gender = str(row["gender"] or "").strip().lower()
+    age = int(row["age"] or 0)
+    return (gender in ("female", "f") and age >= 30) or (gender in ("male", "m") and age >= 35)
+
+
+def private_dating_active(user_id: int) -> bool:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with sqlite3.connect(DB_PATH, timeout=10) as db:
+        row = db.execute("SELECT end_date,play_state,status FROM private_dating_subscriptions WHERE user_id=? ORDER BY id DESC LIMIT 1", (int(user_id),)).fetchone()
+    if not row or not row[0]:
+        return False
+    try:
+        expiry = datetime.datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+        if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=datetime.timezone.utc)
+        return str(row[2]).lower() == "active" and str(row[1]) in {"SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"} and expiry.astimezone(datetime.timezone.utc) > now
+    except Exception:
+        return False
+
+
+@app.get("/private-dating/status/{user_id}")
+def private_dating_status(user_id: int):
+    if not ensure_active_user(user_id):
+        raise HTTPException(status_code=404, detail="Account not found or disabled.")
+    with sqlite3.connect(DB_PATH, timeout=10) as db:
+        db.row_factory = sqlite3.Row
+        me = db.execute("SELECT gender,age FROM users WHERE id=?", (int(user_id),)).fetchone()
+    if not me: raise HTTPException(status_code=404, detail="Account not found.")
+    gender = str(me["gender"] or "").strip().lower()
+    audience = "old_aunty" if gender in ("male", "m") else "old_uncle" if gender in ("female", "f") else "unknown"
+    return {"status": True, "active": private_dating_active(user_id), "eligible_category": is_private_dating_profile(me), "audience": audience, "product_id": PRIVATE_DATING_PRODUCT_ID, "base_plan_id": PRIVATE_DATING_BASE_PLAN_ID, "amount": PRIVATE_DATING_AMOUNT_INR}
+
+
+@app.get("/private-dating/profiles/{user_id}")
+def private_dating_profiles(user_id: int):
+    if not ensure_active_user(user_id):
+        raise HTTPException(status_code=404, detail="Account not found or disabled.")
+    if not private_dating_active(user_id):
+        return {"status": True, "active": False, "profiles": [], "message": "Subscribe to Private Dating for ₹59/month to unlock these profiles."}
+    with sqlite3.connect(DB_PATH, timeout=10) as db:
+        db.row_factory = sqlite3.Row
+        me = db.execute("SELECT gender FROM users WHERE id=?", (int(user_id),)).fetchone()
+        gender = str(me["gender"] or "").strip().lower() if me else ""
+        wanted = "female" if gender in ("male", "m") else "male" if gender in ("female", "f") else ""
+        if not wanted: return {"status": True, "active": True, "profiles": []}
+        rows = db.execute("SELECT id,name,gender,age,height,religion,caste,education,occupation,city,photo FROM users WHERE id!=? AND COALESCE(is_deleted,0)=0 AND lower(trim(coalesce(gender,'')))=? AND (((lower(trim(coalesce(gender,''))) IN ('female','f') AND CAST(coalesce(age,0) AS INTEGER)>=30) OR (lower(trim(coalesce(gender,''))) IN ('male','m') AND CAST(coalesce(age,0) AS INTEGER)>=35))) ORDER BY id DESC LIMIT 100", (int(user_id), wanted)).fetchall()
+    return {"status": True, "active": True, "profiles": [dict(r) for r in rows]}
+
+
+@app.post("/verify-private-dating-subscription")
+def verify_private_dating_subscription(data: PrivateDatingVerifyModel):
+    if not ensure_active_user(data.user_id): raise HTTPException(status_code=404, detail="Account not found or disabled.")
+    product_id = str(data.product_id or "").strip()
+    purchase_token = str(data.purchase_token or "").strip()
+    if product_id != PRIVATE_DATING_PRODUCT_ID: raise HTTPException(status_code=400, detail="This is not the Private Dating subscription product.")
+    if not purchase_token or len(purchase_token)>4096: raise HTTPException(status_code=400, detail="A valid Google Play purchase token is required.")
+    try:
+        details = google_play_subscription_details(purchase_token)
+        state = str(details.get("subscriptionState", ""))
+        items = [i for i in (details.get("lineItems") or []) if str(i.get("productId", "")) == PRIVATE_DATING_PRODUCT_ID and str((i.get("offerDetails") or {}).get("basePlanId", "")) == PRIVATE_DATING_BASE_PLAN_ID]
+        if not items: return {"status": False, "active": False, "message": "Google Play purchase does not match Private Dating ₹59/month."}
+        expiry_values = [str(i.get("expiryTime", "")) for i in items if i.get("expiryTime")]
+        if not expiry_values: return {"status": False, "active": False, "message": "Google Play did not return subscription expiry."}
+        expiry = datetime.datetime.fromisoformat(max(expiry_values).replace("Z", "+00:00"))
+        if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=datetime.timezone.utc)
+        expiry = expiry.astimezone(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if state not in {"SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"} or expiry <= now:
+            return {"status": False, "active": False, "message": "Private Dating subscription is not currently active."}
+        with sqlite3.connect(DB_PATH, timeout=10) as db:
+            existing = db.execute("SELECT user_id FROM private_dating_subscriptions WHERE purchase_token=?", (purchase_token,)).fetchone()
+            if existing and int(existing[0]) != int(data.user_id): return {"status": False, "active": False, "message": "This purchase is linked to another account."}
+            life = google_play_lifecycle_fields(details, items)
+            db.execute("""INSERT INTO private_dating_subscriptions(user_id,product_id,base_plan_id,amount,purchase_token,status,start_date,end_date,play_state,auto_renewing,cancel_time,latest_order_id,last_checked_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(purchase_token) DO UPDATE SET status=excluded.status,end_date=excluded.end_date,play_state=excluded.play_state,auto_renewing=excluded.auto_renewing,cancel_time=excluded.cancel_time,latest_order_id=excluded.latest_order_id,last_checked_at=excluded.last_checked_at""", (int(data.user_id), product_id, PRIVATE_DATING_BASE_PLAN_ID, PRIVATE_DATING_AMOUNT_INR, purchase_token, "active", details.get("startTime") or now.isoformat(), expiry.isoformat(), state, life["auto_renewing"], life["cancel_time"], life["latest_order_id"], now.isoformat()))
+            db.commit()
+        firebase_sync_async()
+        return {"status": True, "active": True, "product_id": product_id, "expiry_time": expiry.isoformat(), "message": "Private Dating ₹59/month verified and activated."}
+    except ValueError as exc: return {"status": False, "active": False, "message": str(exc)}
+    except RuntimeError as exc: raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        print("Private Dating verification error:", str(exc))
+        raise HTTPException(status_code=500, detail="Could not verify Private Dating subscription.")
+
+
 @app.get("/premium-status/{user_id}")
 def premium_status(user_id: int):
     if not ensure_active_user(user_id):
@@ -3703,6 +3810,7 @@ def my_matches(user_id:int):
         INNER JOIN users ON users.id = interests.sender_id
         WHERE interests.receiver_id=? AND interests.status='Accepted'
           AND lower(trim(coalesce(users.gender,'')))=?
+          AND NOT ((lower(trim(coalesce(users.gender,''))) IN ('female','f') AND CAST(coalesce(users.age,0) AS INTEGER)>=30) OR (lower(trim(coalesce(users.gender,''))) IN ('male','m') AND CAST(coalesce(users.age,0) AS INTEGER)>=35))
         UNION
         SELECT DISTINCT users.id, users.name, users.gender, users.age, users.height,
                users.religion, users.caste, users.education, users.occupation,
@@ -3711,6 +3819,7 @@ def my_matches(user_id:int):
         INNER JOIN users ON users.id = interests.receiver_id
         WHERE interests.sender_id=? AND interests.status='Accepted'
           AND lower(trim(coalesce(users.gender,'')))=?
+          AND NOT ((lower(trim(coalesce(users.gender,''))) IN ('female','f') AND CAST(coalesce(users.age,0) AS INTEGER)>=30) OR (lower(trim(coalesce(users.gender,''))) IN ('male','m') AND CAST(coalesce(users.age,0) AS INTEGER)>=35))
         ORDER BY id DESC
         LIMIT 100
     """, (user_id, wanted_gender, user_id, wanted_gender))

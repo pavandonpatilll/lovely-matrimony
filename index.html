@@ -857,6 +857,18 @@ body{background:radial-gradient(ellipse at 8% 12%,rgba(255,255,255,.48),transpar
 @keyframes pmConfettiFall{to{transform:translateY(110vh) rotate(650deg);opacity:.2}}
 </style>
 
+
+<style>
+/* Private Dating: isolated, responsive premium experience */
+.pmPrivateCard{position:relative;overflow:hidden;margin:14px 0 18px;padding:22px;border-radius:24px;color:#fff;background:radial-gradient(circle at 100% 0%,#ff8cae66,transparent 38%),linear-gradient(135deg,#23112f,#76224f 58%,#d83f78);box-shadow:0 16px 34px #57103c2b;border:1px solid #ffffff55}
+.pmPrivateCard:after{content:'♡';position:absolute;right:18px;top:6px;font-size:86px;line-height:1;color:#ffffff13;pointer-events:none}
+.pmPrivateEyebrow{font-size:10px;letter-spacing:2px;font-weight:900;color:#ffd7e5}.pmPrivateTitle{font-size:clamp(25px,6vw,34px);font-weight:900;margin:8px 0}.pmPrivateCopy{font-size:13px;line-height:1.6;color:#ffeaf2;max-width:460px}
+.pmPrivatePrice{display:inline-flex;align-items:baseline;gap:4px;margin:15px 0 12px;padding:8px 13px;border-radius:14px;background:#ffffff18;border:1px solid #ffffff30}.pmPrivatePrice strong{font-size:30px}.pmPrivatePrice span{font-size:12px;color:#ffe3ed}
+.pmPrivateCTA{width:100%;border:0;border-radius:14px;padding:14px 16px;font-weight:900;font-size:15px;color:#5b173d;background:linear-gradient(100deg,#ffe5a5,#fff3d3);cursor:pointer;box-shadow:0 7px 18px #1b071b30}
+.pmPrivatePage{max-width:760px;margin:0 auto;padding:8px 0 30px;color:#2d1730}.pmPrivateTop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.pmPrivateBack{border:0;border-radius:12px;padding:10px 13px;background:#fff0f5;color:#8d2451;font-weight:800;cursor:pointer}.pmPrivatePosterGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin:16px 0}.pmPrivatePoster{position:relative;min-height:220px;padding:18px 13px;border-radius:22px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;color:#fff;box-shadow:0 12px 26px #45122c22;border:1px solid #ffffff77}.pmPrivatePoster.aunty{background:radial-gradient(circle at 20% 10%,#ffd9e5,transparent 36%),linear-gradient(145deg,#40133c,#b82c6d 62%,#f28aa9)}.pmPrivatePoster.uncle{background:radial-gradient(circle at 80% 10%,#d8edff,transparent 36%),linear-gradient(145deg,#102d49,#3d548f 62%,#b17cae)}.pmPrivatePoster .pmPrivateEmoji{font-size:48px;filter:drop-shadow(0 5px 9px #0003);margin-bottom:auto}.pmPrivatePoster h3{font-size:21px;margin-bottom:5px}.pmPrivatePoster p{font-size:12px;line-height:1.45;color:#fff0f5}.pmPrivatePoster button{margin-top:12px;border:0;border-radius:12px;padding:11px 8px;font-weight:900;background:#fff;color:#76224f;cursor:pointer}.pmPrivateStatus{padding:12px;border-radius:13px;background:#fff0f5;color:#80264d;font-size:13px;line-height:1.5;margin:12px 0}.pmPrivateProfile{background:#fff;border:1px solid #f5dce7;border-radius:18px;padding:14px;margin:12px 0;box-shadow:0 8px 22px #4d17300c}
+@media(max-width:480px){.pmPrivatePosterGrid{gap:9px}.pmPrivatePoster{padding:13px 10px;min-height:205px}.pmPrivatePoster h3{font-size:18px}.pmPrivatePoster .pmPrivateEmoji{font-size:40px}}
+</style>
+
 </head>
 
 <body>
@@ -1240,8 +1252,33 @@ font-weight:500;
 
 </div>
 
+<section class="pmPrivateCard" aria-label="Private Dating membership">
+  <div class="pmPrivateEyebrow">A MORE PRIVATE WAY TO CONNECT</div>
+  <div class="pmPrivateTitle">💗 Private Dating</div>
+  <p class="pmPrivateCopy">A separate space for mature adults to discover compatible people respectfully. Choose your category and unlock eligible profiles.</p>
+  <div class="pmPrivatePrice"><strong>₹59</strong><span>/ month · Auto-renewing</span></div>
+  <button class="pmPrivateCTA" type="button" onclick="openPrivateDating()">Explore Private Dating <span style="float:right">→</span></button>
+</section>
 
+</div>
 
+<!-- ================= PRIVATE DATING PAGE ================= -->
+<div id="privateDatingSection" class="hidden pmPrivatePage">
+  <div class="pmPrivateTop"><button class="pmPrivateBack" type="button" onclick="showSection('home')">← Home</button><strong style="color:#8e2454;letter-spacing:1px">PRIVATE DATING</strong></div>
+  <section class="pmPrivateCard">
+    <div class="pmPrivateEyebrow">PREM MILAN · PRIVATE CLUB</div><div class="pmPrivateTitle">Meet beyond the ordinary.</div>
+    <p class="pmPrivateCopy">Separate from regular Search and Matches. ₹59/month, billed by Google Play. You can manage or cancel the subscription in Google Play.</p>
+    <div class="pmPrivatePrice"><strong>₹59</strong><span>/ month</span></div>
+  </section>
+  <div id="pmPrivateCategoryHeading" style="font-weight:900;font-size:18px;margin:18px 2px 6px">Choose your category</div>
+  <div id="pmPrivatePosterGrid" class="pmPrivatePosterGrid">
+    <article class="pmPrivatePoster aunty" id="pmPrivateAunty"><div class="pmPrivateEmoji">🌹</div><h3>Old Aunty</h3><p>For male members · Mature women 30+</p><button type="button" onclick="selectPrivateCategory('old_aunty')">Explore Aunty Profiles →</button></article>
+    <article class="pmPrivatePoster uncle" id="pmPrivateUncle"><div class="pmPrivateEmoji">🌹</div><h3>Old Uncle</h3><p>For female members · Mature men 35+</p><button type="button" onclick="selectPrivateCategory('old_uncle')">Explore Uncle Profiles →</button></article>
+  </div>
+  <div id="pmPrivateStatus" class="pmPrivateStatus" role="status" aria-live="polite">Checking your membership…</div>
+  <button id="pmPrivateBuyButton" class="pmPrivateCTA" type="button" onclick="startPrivateDatingCheckout()">Unlock Private Dating · ₹59/month →</button>
+  <div id="pmPrivateProfiles" aria-live="polite"></div>
+  <p style="font-size:11px;line-height:1.6;color:#777;text-align:center;margin:14px 8px">Only consenting adults are shown. Profiles and real-life meetings are subject to availability and mutual consent; a date is not guaranteed.</p>
 </div>
 
 <!-- ================= PREMIUM PAGE ================= -->
@@ -2049,6 +2086,11 @@ window.onGooglePlayPurchaseResult=async function(raw){
   if(purchase.status==="error" || purchase.error){
     if(statusEl)statusEl.textContent=purchase.message||purchase.error||"Google Play purchase was not completed.";
     if(button)button.disabled=false;
+    const privateButton=document.getElementById("pmPrivateBuyButton");if(privateButton)privateButton.disabled=false;
+    return;
+  }
+  if(purchase.productId==="private_dating_59"){
+    await window.onPrivateDatingPurchaseResult(purchase);
     return;
   }
   if(!userId){
@@ -2097,6 +2139,8 @@ window.onGooglePlayRestoreResult=function(raw){
   let purchases=[];
   try{purchases=typeof raw==="string"?JSON.parse(raw):raw;}catch(e){purchases=[];}
   if(!Array.isArray(purchases))purchases=purchases?[purchases]:[];
+  const privateMatch=purchases.find(p=>p&&p.productId==="private_dating_59"&&p.purchaseToken);
+  if(privateMatch){window.onPrivateDatingPurchaseResult(privateMatch);return;}
   const match=purchases.find(p=>p&&p.productId==="prem_milan_premium"&&p.purchaseToken);
   if(match){window.onGooglePlayPurchaseResult(match);return;}
   const statusEl=document.getElementById("pmPremiumPageStatus");
@@ -2105,6 +2149,63 @@ window.onGooglePlayRestoreResult=function(raw){
   if(button)button.disabled=false;
 }
 
+
+let pmPrivateSelectedCategory="";
+async function openPrivateDating(){
+  if(!localStorage.getItem("userId")){alert("Please login first ❤️");return;}
+  showSection("privateDating");
+  const gender=(localStorage.getItem("gender")||localStorage.getItem("userGender")||"").toLowerCase();
+  const aunty=document.getElementById("pmPrivateAunty"),uncle=document.getElementById("pmPrivateUncle");
+  if(gender==="male"||gender==="m"){if(uncle)uncle.style.display="none";if(aunty)aunty.style.display="flex";}
+  else if(gender==="female"||gender==="f"){if(aunty)aunty.style.display="none";if(uncle)uncle.style.display="flex";}
+  else {if(aunty)aunty.style.display="flex";if(uncle)uncle.style.display="flex";}
+  const status=document.getElementById("pmPrivateStatus");if(status)status.textContent="Checking your Private Dating membership…";
+  try{const r=await window.pmApiFetch("/private-dating/status/"+encodeURIComponent(localStorage.getItem("userId")),{cache:"no-store"},1);
+    const aunty=document.getElementById("pmPrivateAunty"),uncle=document.getElementById("pmPrivateUncle");
+    if(r.audience==="old_aunty"){if(aunty)aunty.style.display="flex";if(uncle)uncle.style.display="none";}
+    else if(r.audience==="old_uncle"){if(uncle)uncle.style.display="flex";if(aunty)aunty.style.display="none";}
+    if(r.active){if(status)status.textContent="✓ Private Dating is active until your paid period expires.";const b=document.getElementById("pmPrivateBuyButton");if(b){b.textContent="Private Dating Active ✓";b.disabled=true;}if(r.audience) {pmPrivateSelectedCategory=r.audience;await loadPrivateDatingProfiles();}}
+    else {if(status)status.textContent="Choose your category, then unlock mature profiles with the separate ₹59/month subscription.";const b=document.getElementById("pmPrivateBuyButton");if(b){b.textContent="Unlock Private Dating · ₹59/month →";b.disabled=false;}}
+  }catch(e){if(status)status.textContent="Could not refresh membership. Check your connection and try again.";}
+}
+function selectPrivateCategory(category,skipGate=false){
+  pmPrivateSelectedCategory=category;
+  const gender=(localStorage.getItem("gender")||localStorage.getItem("userGender")||"").toLowerCase();
+  if(!skipGate && ((category==="old_aunty"&&gender&&gender!=="male"&&gender!=="m")||(category==="old_uncle"&&gender&&gender!=="female"&&gender!=="f"))){const st=document.getElementById("pmPrivateStatus");if(st)st.textContent="This category is available for the matching member gender.";return;}
+  const status=document.getElementById("pmPrivateStatus");if(status)status.textContent="Selected: "+(category==="old_aunty"?"Old Aunty":"Old Uncle")+". ₹59/month membership is required to view profiles.";
+  if(!skipGate)startPrivateDatingCheckout();
+}
+async function startPrivateDatingCheckout(){
+  if(!localStorage.getItem("userId")){alert("Please login first ❤️");return;}
+  const b=document.getElementById("pmPrivateBuyButton"),st=document.getElementById("pmPrivateStatus");
+  try{const current=await window.pmApiFetch("/private-dating/status/"+encodeURIComponent(localStorage.getItem("userId")),{cache:"no-store"},1);
+    if(current.active){if(st)st.textContent="Private Dating is already active. Loading eligible profiles…";await loadPrivateDatingProfiles();return;}
+  }catch(e){}
+  const billing=window.PremMilanBilling;
+  if(!billing||typeof billing.launchSubscription!=="function"){if(st)st.textContent="Google Play billing is available in the installed Android app. Open Prem Milan from your Android app to subscribe.";return;}
+  if(b)b.disabled=true;if(st)st.textContent="Opening Google Play for Private Dating ₹59/month…";
+  try{billing.launchSubscription("private_dating_59");}catch(e){if(st)st.textContent=e.message||"Could not open Google Play. Please try again.";if(b)b.disabled=false;}
+}
+window.onPrivateDatingPurchaseResult=async function(raw){
+  let purchase;try{purchase=typeof raw==="string"?JSON.parse(raw):raw;}catch(e){purchase=null;}
+  const st=document.getElementById("pmPrivateStatus"),b=document.getElementById("pmPrivateBuyButton");
+  if(!purchase||purchase.productId!=="private_dating_59"||!purchase.purchaseToken){if(st)st.textContent="Google Play did not return a valid Private Dating purchase. No access was activated.";if(b)b.disabled=false;return;}
+  const userId=Number(localStorage.getItem("userId")||0);if(!userId){if(st)st.textContent="Please login again, then restore your purchase.";if(b)b.disabled=false;return;}
+  if(st)st.textContent="Verifying your ₹59 subscription securely with Google Play…";
+  try{const response=await window.pmApiFetch("/verify-private-dating-subscription",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:userId,product_id:purchase.productId,purchase_token:purchase.purchaseToken})},1);
+    if(!response.status||!response.active)throw new Error(response.message||"Purchase verification failed.");
+    const bridge=window.PremMilanBilling;if(!purchase.acknowledged&&bridge&&typeof bridge.acknowledgePurchase==="function"){try{bridge.acknowledgePurchase(purchase.purchaseToken);}catch(e){console.warn("Acknowledgement pending",e);}}
+    if(st)st.textContent="✓ Google Play verified your Private Dating membership. Welcome in ❤️";if(b){b.textContent="Private Dating Active ✓";b.disabled=true;}await loadPrivateDatingProfiles();
+  }catch(e){if(st)st.textContent=e.message||"Verification is pending. Do not pay again; retry or restore your purchase.";if(b)b.disabled=false;}
+};
+async function loadPrivateDatingProfiles(){
+  const box=document.getElementById("pmPrivateProfiles");if(!box)return;box.innerHTML='<div class="pmPrivateStatus">Loading eligible profiles…</div>';
+  try{const result=await window.pmApiFetch("/private-dating/profiles/"+encodeURIComponent(localStorage.getItem("userId")),{cache:"no-store"},1);
+    if(!result.active){box.innerHTML='<div class="pmPrivateStatus">'+escapeHtml(result.message||"A verified ₹59/month subscription is required.")+'</div>';return;}
+    const profiles=result.profiles||[];if(!profiles.length){box.innerHTML='<div class="pmPrivateStatus">No eligible profiles are available right now. Please check again later.</div>';return;}
+    box.innerHTML=profiles.map(u=>{const photo=u.photo?window.PM_API+u.photo:"";return `<article class="pmPrivateProfile"><div style="display:flex;gap:12px;align-items:center">${photo?`<img loading="lazy" src="${photo}" alt="Profile photo" style="width:78px;height:78px;border-radius:16px;object-fit:cover">`:'<div style="width:78px;height:78px;border-radius:16px;background:#fff0f5;display:grid;place-items:center;font-size:30px">❤️</div>'}<div><h3>${escapeHtml(u.name||"Member")}</h3><p style="font-size:13px;color:#666;margin-top:5px">${Number(u.age)||"—"} yrs · ${escapeHtml(u.city||"Location not added")}</p><p style="font-size:12px;color:#777;margin-top:4px">${escapeHtml(u.education||"")} ${u.occupation?'· '+escapeHtml(u.occupation):''}</p></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><button class="btn" onclick="sendInterest(${Number(u.id)})">❤️ Interest</button><button class="btn" style="background:#17a2b8" onclick="viewProfile(${Number(u.id)})">👀 View Profile</button></div></article>`;}).join("");
+  }catch(e){box.innerHTML='<div class="pmPrivateStatus">Could not load profiles. Please retry in a moment.</div>';console.error("Private Dating profiles",e);}
+}
 
 async function checkPremiumStatusAfterPayment(){
   const userId = localStorage.getItem("userId");
@@ -3402,7 +3503,7 @@ function showSection(page){
 window.currentSection=page;
 
 const sections=[
-"homeSection","searchSection","matchesSection","chatSection","premiumSection",
+"homeSection","searchSection","matchesSection","chatSection","premiumSection","privateDatingSection",
 "profileSection","userProfileSection","interestSection","editProfileSection",
 "favoriteSection","notificationSection","settingsSection"
 ];
