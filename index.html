@@ -869,6 +869,29 @@ body{background:radial-gradient(ellipse at 8% 12%,rgba(255,255,255,.48),transpar
 @media(max-width:480px){.pmPrivatePosterGrid{gap:9px}.pmPrivatePoster{padding:13px 10px;min-height:205px}.pmPrivatePoster h3{font-size:18px}.pmPrivatePoster .pmPrivateEmoji{font-size:40px}}
 </style>
 
+
+<style id="pm-chat-premium-poster-style">
+#pmChatPremiumPoster{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(28,8,23,.68);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#pmChatPremiumPoster.show{display:flex;animation:pmPosterFade .22s ease-out}
+#pmChatPremiumPoster .pmPosterCard{position:relative;width:min(100%,420px);max-height:92dvh;overflow:auto;border-radius:28px;background:#fff8fb;box-shadow:0 28px 90px rgba(0,0,0,.35);text-align:center;padding:0 22px 22px;color:#32152a}
+#pmChatPremiumPoster .pmPosterHero{position:relative;overflow:hidden;margin:0 -22px 18px;padding:28px 22px 25px;background:radial-gradient(circle at 85% 5%,rgba(255,255,255,.3),transparent 28%),linear-gradient(145deg,#35102e,#8c1d54 58%,#f04479);color:white}
+#pmChatPremiumPoster .pmPosterClose{position:absolute;right:13px;top:13px;width:35px;height:35px;border:1px solid #ffffff55;border-radius:50%;background:#ffffff22;color:#fff;font-size:23px;cursor:pointer}
+#pmChatPremiumPoster .pmPosterIcon{display:grid;place-items:center;width:74px;height:74px;margin:0 auto 13px;border-radius:24px;background:linear-gradient(145deg,#ffe8a8,#e8b65a);color:#672342;font-size:35px;box-shadow:0 10px 25px #1d061b55;transform:rotate(-5deg)}
+#pmChatPremiumPoster .pmPosterEyebrow{font-size:10px;letter-spacing:2px;font-weight:900;opacity:.85}
+#pmChatPremiumPoster h2{font-size:clamp(27px,7vw,34px);line-height:1.12;letter-spacing:-.6px;margin:9px 0 8px;font-weight:900}
+#pmChatPremiumPoster .pmPosterHero p{font-size:13px;line-height:1.5;color:#ffe8f0;max-width:300px;margin:auto}
+#pmChatPremiumPoster .pmPosterPrice{display:flex;align-items:center;justify-content:center;gap:9px;margin:4px 0 6px;color:#8d1c52}
+#pmChatPremiumPoster .pmPosterPrice strong{font-size:55px;line-height:1;letter-spacing:-2px}
+#pmChatPremiumPoster .pmPosterPrice span{font-size:13px;text-align:left;color:#715d69;line-height:1.25}
+#pmChatPremiumPoster .pmPosterBenefits{display:grid;gap:11px;text-align:left;margin:17px 0 19px}
+#pmChatPremiumPoster .pmPosterBenefits div{display:flex;gap:10px;align-items:center;font-size:13px;font-weight:700;color:#49313f}
+#pmChatPremiumPoster .pmPosterTick{display:grid;place-items:center;flex:0 0 25px;height:25px;border-radius:50%;background:#ffe4ee;color:#c12861;font-weight:900}
+#pmChatPremiumPoster .pmPosterCTA{width:100%;border:0;border-radius:15px;padding:15px 14px;background:linear-gradient(100deg,#ff416c,#96245e);color:#fff;font-size:15px;font-weight:900;box-shadow:0 10px 22px #c62d672e;cursor:pointer}
+#pmChatPremiumPoster .pmPosterFoot{font-size:10px;color:#8a7882;line-height:1.5;margin:12px 3px 0}
+@keyframes pmPosterFade{from{opacity:0}to{opacity:1}}
+@media(max-width:380px){#pmChatPremiumPoster{padding:10px}#pmChatPremiumPoster .pmPosterCard{padding:0 16px 17px;border-radius:23px}#pmChatPremiumPoster .pmPosterHero{margin:0 -16px 15px;padding:24px 16px 21px}#pmChatPremiumPoster .pmPosterBenefits{gap:9px}}
+@media(prefers-reduced-motion:reduce){#pmChatPremiumPoster.show{animation:none}}
+</style>
 </head>
 
 <body>
@@ -2682,14 +2705,54 @@ function closeChatRealtime(){
   sendTypingState(false);
 }
 
+function pmShowChatPremiumPoster(){
+  let overlay=document.getElementById("pmChatPremiumPoster");
+  if(!overlay){
+    overlay=document.createElement("div");
+    overlay.id="pmChatPremiumPoster";
+    overlay.setAttribute("role","dialog");
+    overlay.setAttribute("aria-modal","true");
+    overlay.setAttribute("aria-labelledby","pmPosterTitle");
+    overlay.innerHTML=`<div class="pmPosterCard">
+      <div class="pmPosterHero"><button class="pmPosterClose" type="button" aria-label="Close premium offer" onclick="pmCloseChatPremiumPoster()">×</button>
+        <div class="pmPosterIcon">♡</div><div class="pmPosterEyebrow">PREM MILAN EXCLUSIVE</div>
+        <h2 id="pmPosterTitle">Make a meaningful<br>connection.</h2>
+        <p>Unlock conversations and discover more compatible matches.</p>
+      </div>
+      <div class="pmPosterPrice"><strong>₹15</strong><span>per month<br>auto-renewing plan</span></div>
+      <div class="pmPosterBenefits">
+        <div><span class="pmPosterTick">✓</span><span>Unlimited chat while Premium is active</span></div>
+        <div><span class="pmPosterTick">✓</span><span>Unlock all available matches</span></div>
+        <div><span class="pmPosterTick">✓</span><span>Reply, react and keep the conversation going</span></div>
+      </div>
+      <button class="pmPosterCTA" type="button" onclick="pmContinueToPremium()">Unlock Premium · ₹15/month&nbsp; →</button>
+      <p class="pmPosterFoot">Subscription renews automatically unless cancelled. Manage or cancel through Google Play.</p>
+    </div>`;
+    overlay.addEventListener("click",e=>{if(e.target===overlay)pmCloseChatPremiumPoster();});
+    document.body.appendChild(overlay);
+  }
+  overlay.classList.add("show");
+  document.body.style.overflow="hidden";
+  const close=overlay.querySelector(".pmPosterClose"); if(close) close.focus();
+}
+function pmCloseChatPremiumPoster(){
+  const overlay=document.getElementById("pmChatPremiumPoster");
+  if(overlay)overlay.classList.remove("show");
+  document.body.style.overflow="";
+}
+function pmContinueToPremium(){
+  pmCloseChatPremiumPoster();
+  buyPremium();
+}
+document.addEventListener("keydown",function(e){if(e.key==="Escape")pmCloseChatPremiumPoster();});
+
 async function openChatSection(){
   const userId = Number(localStorage.getItem("userId") || 0);
   if(!userId){ alert("Please login first ❤️"); return; }
   try{
     const access = await pmGetPremiumStatus();
     if(!access.status || !access.premium){
-      const goPremium = confirm("💬 Chat Premium members ke liye hai. ₹15/month plan lekar chat aur all matches unlock karein. Premium plan dekhna hai?");
-      if(goPremium) await buyPremium();
+      pmShowChatPremiumPoster();
       return;
     }
     showSection("chat");
@@ -2705,8 +2768,7 @@ async function openChat(receiverId,name){
   try{
     const access = await pmGetPremiumStatus();
     if(!access.status || !access.premium){
-      const goPremium = confirm("💬 Chat Premium members ke liye hai.\n\n₹15/month plan lekar unlimited chat aur all matches unlock karein.\n\nPremium plan dekhna hai?");
-      if(goPremium) await buyPremium();
+      pmShowChatPremiumPoster();
       return;
     }
   }catch(error){
