@@ -450,13 +450,13 @@ async function loadBlockedUsers(){
 
                 <td>${user.id}</td>
 
-                <td>${user.user}</td>
+                <td>${pmAdminEsc(user.user)}</td>
 
-                <td>${user.blocked}</td>
+                <td>${pmAdminEsc(user.blocked)}</td>
 
-                <td>${user.reason}</td>
+                <td>${pmAdminEsc(user.reason)}</td>
 
-                <td>${user.date}</td>
+                <td>${pmAdminEsc(user.date)}</td>
 
                 <td>${(user.user_deleted||user.blocked_deleted)?'🔴 Disabled':'🟢 Active'}</td>
 
@@ -527,11 +527,11 @@ async function loadMatches(){
 
                     <td>${match.id}</td>
 
-                    <td>${match.male}</td>
+                    <td>${pmAdminEsc(match.male)}</td>
 
-                    <td>${match.female}</td>
+                    <td>${pmAdminEsc(match.female)}</td>
 
-                    <td>${match.created_at}</td>
+                    <td>${pmAdminEsc(match.created_at)}</td>
 
                 </tr>
 
@@ -692,9 +692,9 @@ async function loadPremiumUsers(){
 
                 </td>
 
-                <td>${user.name}</td>
+                <td>${pmAdminEsc(user.name)}</td>
 
-                <td>${user.mobile}</td>
+                <td>${pmAdminEsc(user.mobile)}</td>
 
                 <td>${user.city || "-"}</td>
 
@@ -818,11 +818,11 @@ async function loadReports(){
 
                 <td>${report.id}</td>
 
-                <td>${report.reporter}</td>
+                <td>${pmAdminEsc(report.reporter)}</td>
 
-                <td>${report.reported}</td>
+                <td>${pmAdminEsc(report.reported)}</td>
 
-                <td>${report.reason}</td>
+                <td>${pmAdminEsc(report.reason)}</td>
 
                 <td>
 
@@ -896,21 +896,25 @@ async function viewUser(userId){
         border:4px solid #ff4d6d;
         ">
 
-        <h2>${user.name}</h2>
+        <h2>${pmAdminEsc(user.name)}</h2>
 
-        <p>📱 ${user.mobile}</p>
-        <p>👤 ${user.gender}</p>
-        <p>💕 ${user.looking_for}</p>
-        <p>🎂 ${user.age}</p>
-        <p>📏 ${user.height}</p>
-        <p>🛕 ${user.religion}</p>
-        <p>👥 ${user.caste}</p>
-        <p>🎓 ${user.education}</p>
-        <p>💼 ${user.occupation}</p>
-        <p>📍 ${user.city}</p>
+        <p>📱 ${pmAdminEsc(user.mobile)}</p>
+        <p>👤 ${pmAdminEsc(user.gender)}</p>
+        <p>💕 ${pmAdminEsc(user.looking_for)}</p>
+        <p>🎂 Age: ${pmAdminEsc(user.age || "-")}</p>
+        <p>📅 Date of birth: ${pmAdminEsc(user.dob || "-")}</p>
+        <p>📏 Height: ${pmAdminEsc(user.height || "-")}</p>
+        <p>🛕 ${pmAdminEsc(user.religion)}</p>
+        <p>👥 ${pmAdminEsc(user.caste)}</p>
+        <p>🎓 ${pmAdminEsc(user.education)}</p>
+        <p>💼 ${pmAdminEsc(user.occupation)}</p>
+        <p>📍 ${pmAdminEsc([user.city,user.state,user.country].filter(Boolean).join(", ") || "-")}</p>
+        <p>✅ Verification: ${Number(user.is_verified)===1 ? "Verified" : "Not verified"}</p>
+        <p>👑 Membership: ${Number(user.is_premium)===1 ? "Premium" : "Free"}</p>
+        <p>🗓 Registered: ${pmAdminEsc(user.created_at || "-")}</p>
 
         <p style="margin-top:15px;">
-        ${user.about || ""}
+        ${pmAdminEsc(user.about || "")}
         </p>
 
         </div>
@@ -1141,13 +1145,13 @@ return;
 
             </td>
 
-            <td>${user.name}</td>
+            <td>${pmAdminEsc(user.name)}</td>
 
-            <td>${user.mobile}</td>
+            <td>${pmAdminEsc(user.mobile)}</td>
 
-            <td>${user.gender}</td>
+            <td>${pmAdminEsc(user.gender)}</td>
 
-            <td>${user.city || "-"}</td>
+            <td>${pmAdminEsc(user.city || "-")}</td>
 
             <td>
 
@@ -1199,7 +1203,7 @@ onclick="deleteUser(${user.id})">
 
         document.getElementById("userTable").innerHTML = html;
 
-        document.getElementById("totalUsers").innerHTML = result.users.length;
+        document.getElementById("totalUsers").textContent = result.total ?? result.users.length;
 
         let premiumCount = result.users.filter(user => user.is_premium).length;
 
@@ -1226,7 +1230,7 @@ let pmAdminRefreshBusy=false;
 setInterval(async function(){
  if(!sessionStorage.getItem("pmAdminToken")||pmAdminRefreshBusy)return;
  pmAdminRefreshBusy=true;
- try{await loadUsers();await loadReports();await loadBlockedUsers();}
+ try{await Promise.allSettled([loadUsers(),loadReports(),loadBlockedUsers()]);}
  finally{pmAdminRefreshBusy=false;}
 },60000);
 

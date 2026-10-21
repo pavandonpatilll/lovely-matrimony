@@ -103,7 +103,7 @@ async def firebase_mirror_middleware(request, call_next):
         "/delete-profile-photo", "/set-main-photo",
         "/verify-private-dating-subscription", "/delete-account"
     }
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and (request.url.path in sync_paths or request.url.path.startswith("/admin/")):
+    if response.status_code < 400 and request.method in {"POST", "PUT", "PATCH", "DELETE"} and (request.url.path in sync_paths or request.url.path.startswith("/admin/")):
         firebase_sync_async()
     return response
 
@@ -3761,6 +3761,7 @@ CREATE TABLE IF NOT EXISTS voice_calls(
 )
 """)
 cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_receiver_status ON voice_calls(receiver_id,status,created_at)")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_caller_status ON voice_calls(caller_id,status,created_at)")
 try:
     cursor.execute("ALTER TABLE voice_calls ADD COLUMN call_limit_seconds INTEGER NOT NULL DEFAULT 120")
 except sqlite3.OperationalError:
@@ -3790,7 +3791,8 @@ def _voice_call_row(call_id):
         if not row:
             return None
         data = dict(row)
-        # Free caller calls expire server-side after 120 seconds; Premium callers are unlimited.
+        # The shared call limit is stored at call creation: 0 only when BOTH users
+        # have active Premium; otherwise the server expires the call after 120 seconds.
         limit_seconds = int(data.get("call_limit_seconds") if data.get("call_limit_seconds") is not None else 120)
         if limit_seconds > 0 and data["status"] == "active" and data["started_at"] and time.time() - float(data["started_at"]) >= limit_seconds:
             db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE id=? AND status='active'", (time.time(), str(call_id)))
@@ -3874,7 +3876,13 @@ def voice_call_status(call_id: str, user_id: int):
     data = _voice_call_row(call_id)
     if not data or int(user_id) not in (int(data["caller_id"]), int(data["receiver_id"])):
         return JSONResponse(status_code=404, content={"status":"ended","message":"Call not found."})
-    return {"status":data["status"],"answer":data["answer_sdp"],"started_at":data["started_at"],"call_limit_seconds":int(data.get("call_limit_seconds") if data.get("call_limit_seconds") is not None else 120)}
+    return {
+        "status": data["status"],
+        "answer": data["answer_sdp"],
+        "started_at": data["started_at"],
+        "call_limit_seconds": int(data.get("call_limit_seconds") if data.get("call_limit_seconds") is not None else 120),
+        "user_is_premium": user_has_premium(user_id)
+    }
 
 @app.post("/voice-calls/end")
 def voice_call_end(data: VoiceCallEndModel):
