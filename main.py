@@ -831,6 +831,7 @@ for _sql in [
     "CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id,created_at)",
     "CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_blocks_user_blocked ON blocks(user_id,blocked_user)",
+    "CREATE INDEX IF NOT EXISTS idx_blocks_blocked_user ON blocks(blocked_user,user_id)",
     "CREATE INDEX IF NOT EXISTS idx_profile_photos_user ON profile_photos(user_id,is_main)",
 ]:
     try:
@@ -1826,10 +1827,15 @@ def search_users(data: SearchModel):
         (lower(trim(coalesce(gender,''))) IN ('female','f') AND CAST(coalesce(age,0) AS INTEGER) >= 30)
         OR (lower(trim(coalesce(gender,''))) IN ('male','m') AND CAST(coalesce(age,0) AS INTEGER) >= 35)
       )
+      AND NOT EXISTS (
+        SELECT 1 FROM blocks b
+        WHERE (b.user_id=? AND b.blocked_user=users.id)
+           OR (b.user_id=users.id AND b.blocked_user=?)
+      )
 
     """
 
-    params = [data.user_id]
+    params = [data.user_id, data.user_id, data.user_id]
 
     if data.gender != "":
         query += " AND gender=?"
@@ -1863,10 +1869,14 @@ def search_users(data: SearchModel):
 
     query += " ORDER BY id DESC LIMIT 60"
 
-    cursor.execute(query, tuple(params))
-
-    users = cursor.fetchall()
-    users = [row for row in users if not users_blocked(data.user_id, row["id"])]
+    # Request-local connection/cursor prevents concurrent searches from
+    # interleaving reads through the module-level SQLite cursor.
+    search_db = sqlite3.connect(DB_PATH, timeout=10)
+    search_db.row_factory = sqlite3.Row
+    try:
+        users = search_db.execute(query, tuple(params)).fetchall()
+    finally:
+        search_db.close()
     premium_access = user_has_premium(data.user_id)
     total_available = len(users)
     if not premium_access:
@@ -3581,7 +3591,80 @@ def admin_matches():
     }
 
 # =====================================================
-# SMART MATCHES
+# SMART MATCHES (used by Home carousel and Matches page)
+# =====================================================
+
+@app.get("/smart-matches/{user_id}")
+def smart_matches(user_id: int):
+    if not ensure_active_user(user_id):
+        return {"status": False, "message": "This profile has been disabled by admin.", "matches": []}
+
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    db.row_factory = sqlite3.Row
+    try:
+        me = db.execute(
+            "SELECT id,gender,age,religion,caste,education,occupation,city FROM users WHERE id=? AND COALESCE(is_deleted,0)=0",
+            (int(user_id),),
+        ).fetchone()
+        if not me:
+            return {"status": False, "message": "Profile not found.", "matches": []}
+        gender = str(me["gender"] or "").strip().lower()
+        wanted = "female" if gender in ("male", "m") else "male" if gender in ("female", "f") else ""
+        if not wanted:
+            return {"status": True, "matches": [], "message": "Please complete your gender in profile to get suitable matches."}
+
+        rows = db.execute("""
+            SELECT u.id,u.name,u.gender,u.age,u.height,u.religion,u.caste,u.education,
+                   u.occupation,u.city,u.photo,
+                   EXISTS(SELECT 1 FROM interests i WHERE i.status='Accepted' AND
+                     ((i.sender_id=? AND i.receiver_id=u.id) OR (i.sender_id=u.id AND i.receiver_id=?))) AS mutual_match
+            FROM users u
+            WHERE u.id<>? AND COALESCE(u.is_deleted,0)=0
+              AND lower(trim(coalesce(u.gender,''))) IN (?,?)
+              AND NOT ((lower(trim(coalesce(u.gender,''))) IN ('female','f') AND CAST(coalesce(u.age,0) AS INTEGER)>=30)
+                    OR (lower(trim(coalesce(u.gender,''))) IN ('male','m') AND CAST(coalesce(u.age,0) AS INTEGER)>=35))
+              AND NOT EXISTS (SELECT 1 FROM blocks b WHERE
+                    (b.user_id=? AND b.blocked_user=u.id) OR (b.user_id=u.id AND b.blocked_user=?))
+            ORDER BY u.id DESC LIMIT 100
+        """, (int(user_id), int(user_id), int(user_id), wanted, wanted[0], int(user_id), int(user_id))).fetchall()
+
+        def norm(value):
+            return str(value or "").strip().casefold()
+        results = []
+        for row in rows:
+            item = dict(row)
+            score = 40
+            reasons = []
+            for key, points, label in (
+                ("city", 15, "Same city"),
+                ("religion", 12, "Same religion"),
+                ("caste", 8, "Similar community"),
+                ("education", 10, "Similar education"),
+                ("occupation", 8, "Similar profession"),
+            ):
+                mine, theirs = norm(me[key]), norm(item.get(key))
+                if mine and theirs and (mine == theirs or mine in theirs or theirs in mine):
+                    score += points
+                    reasons.append(label)
+            try:
+                age_gap = abs(int(me["age"] or 0) - int(item.get("age") or 0))
+                if int(me["age"] or 0) and int(item.get("age") or 0) and age_gap <= 3:
+                    score += 7
+                    reasons.append("Similar age")
+                elif int(me["age"] or 0) and int(item.get("age") or 0) and age_gap <= 7:
+                    score += 3
+            except (TypeError, ValueError):
+                pass
+            item["match_percent"] = min(99, score)
+            item["match_reasons"] = reasons
+            item["mutual_match"] = bool(item.get("mutual_match"))
+            results.append(item)
+        results.sort(key=lambda x: (x["mutual_match"], x["match_percent"], int(x["id"])), reverse=True)
+        return {"status": True, "total": len(results), "matches": results[:60]}
+    finally:
+        db.close()
+
+
 # =====================================================
 # MY MATCHES
 # =====================================================

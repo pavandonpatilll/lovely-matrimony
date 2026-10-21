@@ -948,8 +948,55 @@ window.pmRetryLater=function(label,fn,delay=700){
   }catch(e){}
 };
 window.pmWakeServer=function(){
-  try{ window.__pmNativeFetch((window.PM_API||"")+"/",{cache:"no-store",keepalive:true}).catch(()=>{}); }catch(e){}
+  // One quiet warm-up request; it never blocks page rendering.
+  if(window.__pmWakePending)return;
+  window.__pmWakePending=true;
+  try{
+    window.__pmNativeFetch((window.PM_API||"")+"/",{cache:"no-store",keepalive:true})
+      .catch(()=>{}).finally(()=>{window.__pmWakePending=false;});
+  }catch(e){window.__pmWakePending=false;}
 };
+// Auto-retry only safe GET requests to our API. This handles Render cold starts
+// and short network drops without forcing the user to refresh the whole app.
+(function installSafeApiGetRetry(){
+  if(window.__pmSafeFetchInstalled)return;
+  window.__pmSafeFetchInstalled=true;
+  const nativeFetch=window.fetch.bind(window);
+  const inflight=new Map();
+  window.fetch=function(input,init={}){
+    const rawUrl=typeof input==='string'?input:(input&&input.url)||'';
+    const method=String((init&&init.method)||(input&&input.method)||'GET').toUpperCase();
+    let url;
+    try{url=new URL(rawUrl,location.href);}catch(e){return nativeFetch(input,init);}
+    let apiOrigin='';try{apiOrigin=new URL(window.PM_API||'').origin;}catch(e){}
+    const safeSearchPost=method==='POST'&&url.pathname==='/search';
+    if(!apiOrigin||url.origin!==apiOrigin||!(method==='GET'||safeSearchPost)||(init&&init.signal))return nativeFetch(input,init);
+    const key=url.href;
+    if(method==='GET'&&inflight.has(key))return inflight.get(key).then(r=>r.clone());
+    const task=(async()=>{
+      let lastError;
+      for(let attempt=0;attempt<3;attempt++){
+        const controller=new AbortController();
+        const timer=setTimeout(()=>controller.abort(),18000);
+        try{
+          const response=await nativeFetch(input,{...init,signal:controller.signal});
+          clearTimeout(timer);
+          if(response.status>=500&&attempt<2){lastError=new Error('Temporary API server response');await new Promise(r=>setTimeout(r,500*(attempt+1)));continue;}
+          return response;
+        }catch(e){
+          clearTimeout(timer);lastError=e;
+          if(attempt<2)await new Promise(r=>setTimeout(r,500*(attempt+1)));
+        }
+      }
+      throw lastError||new Error('Unable to connect to Prem Milan API');
+    })();
+    if(method==='GET'){
+      inflight.set(key,task);
+      task.finally(()=>inflight.delete(key)).catch(()=>{});
+    }
+    return task.then(r=>r.clone());
+  };
+})();
 window.pmWakeServer();
 </script>
 <script>
@@ -2416,7 +2463,7 @@ async function pmPollInAppNotifications(initial=false){
  fresh.forEach((n,i)=>setTimeout(()=>pmShowInAppNotice(n),i*350));
  }catch(e){console.log("in-app notifications",e);}
 }
-function pmStartNotificationPolling(){if(pmNotificationPollTimer)return;pmPollInAppNotifications(true);pmNotificationPollTimer=setInterval(()=>pmPollInAppNotifications(false),5000);}
+function pmStartNotificationPolling(){if(pmNotificationPollTimer)return;pmPollInAppNotifications(true);pmNotificationPollTimer=setInterval(()=>pmPollInAppNotifications(false),12000);}
 
 async function loadNotifications(){
 
@@ -2644,15 +2691,19 @@ async function pulsePresence(){
   try{ await window.pmApiFetch("/presence",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:uid})},0); }catch(e){}
 }
 
+let pmPresenceRequestBusy=false;
 async function refreshChatPresence(){
-  if(!currentReceiver)return;
+  if(!currentReceiver||pmPresenceRequestBusy)return;
   const uid=parseInt(localStorage.getItem("userId")||"0");
   if(!uid)return;
+  const receiverAtStart=Number(currentReceiver);
+  pmPresenceRequestBusy=true;
   try{
-    const d=await window.pmApiFetch("/presence/"+uid+"/"+currentReceiver,{cache:"no-store"},0);
+    const d=await window.pmApiFetch("/presence/"+uid+"/"+receiverAtStart,{cache:"no-store"},0);
+    if(Number(currentReceiver)!==receiverAtStart)return;
     if(d.blocked){setChatPresence(false,false);return;}
     setChatPresence(!!d.online,!!d.typing);
-  }catch(e){}
+  }catch(e){}finally{pmPresenceRequestBusy=false;}
 }
 
 function sendTypingState(typing){
@@ -2774,7 +2825,7 @@ async function openChat(receiverId,name){
   // Messages: quick refresh, but only while the tab is visible.
   chatInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)loadChat(true);},2200);
   // Presence/typing: lightweight endpoint, faster than reloading 200 messages.
-  chatPresenceInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)refreshChatPresence();},1800);
+  chatPresenceInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)refreshChatPresence();},3500);
   // Use the single global presence heartbeat; do not send a duplicate every 10 seconds.
 }
 
@@ -2923,11 +2974,15 @@ function pmJumpToMessage(id){
  setTimeout(()=>{target.style.outline="";target.style.outlineOffset="";},1600);
 }
 
+let pmChatLoadBusy=false;
 async function loadChat(silent=false){
   const senderId=parseInt(localStorage.getItem("userId")||"0");
-  if(!senderId||!currentReceiver)return;
+  if(!senderId||!currentReceiver||pmChatLoadBusy)return;
+  const receiverAtStart=Number(currentReceiver);
+  pmChatLoadBusy=true;
   try{
-    const result=await window.pmApiFetch("/chat/"+senderId+"/"+currentReceiver,{cache:"no-store"},0);
+    const result=await window.pmApiFetch("/chat/"+senderId+"/"+receiverAtStart,{cache:"no-store"},0);
+    if(Number(currentReceiver)!==receiverAtStart)return;
     if(result.blocked){
       document.getElementById("chatMessages").innerHTML='<div style="text-align:center;color:#b00020;padding:35px 15px;font-weight:700;">🚫 Chat is blocked between you and this user.</div>';
       setChatAvailability(true);setChatPresence(false,false);return;
@@ -2973,6 +3028,7 @@ async function loadChat(silent=false){
       box.dataset.hadMessages="1";
     }
   }catch(error){if(!silent)console.log("chat load",error);}
+  finally{pmChatLoadBusy=false;}
 }
 
 function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -4249,19 +4305,26 @@ document.addEventListener("DOMContentLoaded", function(){
    return box;
  }
  window.pmGoAllMatches=function(){if(typeof showSection==='function')showSection('matches');if(typeof loadMatches==='function')loadMatches();};
- window.pmLoadHomeMatches=async function(){
+ let homeMatchesRequest=null;
+ window.pmLoadHomeMatches=async function(force=false){
    const uid=localStorage.getItem('userId');const box=ensureRail();if(!box||!uid)return;
    const rail=document.getElementById('pmHomeMatchRail');if(!rail)return;
-   try{
+   const lastLoaded=Number(rail.dataset.loadedAt||0);
+   if(!force&&rail.dataset.loadedAt&&Date.now()-lastLoaded<30000)return;
+   if(homeMatchesRequest)return homeMatchesRequest;
+   homeMatchesRequest=(async()=>{try{
      const response=await fetch(api+'/smart-matches/'+encodeURIComponent(uid),{cache:'no-store'});const data=await response.json();
      if(!data||!data.status||!Array.isArray(data.matches)){rail.innerHTML='<div class="pmHomeMatchEmpty">Matches refresh ho rahe hain. Thodi der baad try karein ❤️</div>';return;}
      if(!data.matches.length){rail.innerHTML='<div class="pmHomeMatchEmpty">Abhi compatible profiles nahi mile. Profile details complete karein ❤️</div>';return;}
      rail.innerHTML=data.matches.slice(0,12).map(u=>{
        const photo=u.photo?(String(u.photo).startsWith('http')?u.photo:api+u.photo):'';
        const meta=[u.age?u.age+' yrs':'',u.city||''].filter(Boolean).join(' · ');
-       return '<article class="pmHomeMatchCard" role="button" tabindex="0" onclick="pmHomeOpenMatch('+Number(u.id)+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();pmHomeOpenMatch('+Number(u.id)+')}"><img loading="lazy" src="'+safeText(photo)+'" alt="Profile photo" onerror="this.style.visibility=\'hidden\'"><div class="pmHomeMatchName">'+safeText(u.name||'Member')+'</div><div class="pmHomeMatchMeta">'+safeText(meta||'Profile available')+'</div><span class="pmHomeMatchScore">💜 '+safeText(u.match_percent==null?'Great match':u.match_percent+'% match')+'</span></article>';
+       return '<article class="pmHomeMatchCard" role="button" tabindex="0" onclick="pmHomeOpenMatch('+Number(u.id)+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();pmHomeOpenMatch('+Number(u.id)+')}"><img loading="lazy" decoding="async" src="'+safeText(photo)+'" alt="Profile photo" onerror="this.style.visibility=\'hidden\'"><div class="pmHomeMatchName">'+safeText(u.name||'Member')+'</div><div class="pmHomeMatchMeta">'+safeText(meta||'Profile available')+'</div><span class="pmHomeMatchScore">💜 '+safeText(u.match_percent==null?'Great match':u.match_percent+'% match')+'</span></article>';
      }).join('');
-   }catch(e){rail.innerHTML='<div class="pmHomeMatchEmpty">Internet reconnect hone par matches phir load honge ❤️</div>';}
+     rail.dataset.loadedAt=String(Date.now());
+   }catch(e){rail.innerHTML='<div class="pmHomeMatchEmpty">Reconnecting automatically… ❤️</div>';}
+   finally{homeMatchesRequest=null;}})();
+   return homeMatchesRequest;
  };
  window.pmHomeOpenMatch=function(id){if(typeof pmOpenProfile==='function')pmOpenProfile(id);else window.pmGoAllMatches();};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{ensureRail();window.pmLoadHomeMatches()});else{ensureRail();window.pmLoadHomeMatches()}
