@@ -3947,3 +3947,142 @@ def admin_firebase_sync():
         "status": True,
         "message": "All Prem Milan data synced to Firebase successfully ❤️"
     }
+
+
+# =====================================================
+# VOICE CALLS (WebRTC signaling; free calls limited to 120 seconds)
+# =====================================================
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS voice_calls(
+    id TEXT PRIMARY KEY,
+    caller_id INTEGER NOT NULL,
+    receiver_id INTEGER NOT NULL,
+    offer_sdp TEXT NOT NULL,
+    answer_sdp TEXT,
+    status TEXT NOT NULL DEFAULT 'ringing',
+    created_at REAL NOT NULL,
+    started_at REAL,
+    ended_at REAL
+)
+""")
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_receiver_status ON voice_calls(receiver_id,status,created_at)")
+conn.commit()
+
+class VoiceCallStartModel(BaseModel):
+    caller_id: int
+    receiver_id: int
+    offer: str
+
+class VoiceCallAnswerModel(BaseModel):
+    call_id: str
+    user_id: int
+    answer: str
+
+class VoiceCallEndModel(BaseModel):
+    call_id: str
+    user_id: int
+    rejected: bool = False
+
+def _voice_call_row(call_id):
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    db.row_factory = sqlite3.Row
+    try:
+        row = db.execute("SELECT * FROM voice_calls WHERE id=?", (str(call_id),)).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        # Server-side expiry means the call cannot remain active beyond two minutes.
+        if data["status"] == "active" and data["started_at"] and time.time() - float(data["started_at"]) >= 120:
+            db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE id=? AND status='active'", (time.time(), str(call_id)))
+            db.commit()
+            data["status"] = "expired"
+        return data
+    finally:
+        db.close()
+
+@app.post("/voice-calls/start")
+def voice_call_start(data: VoiceCallStartModel):
+    if data.caller_id == data.receiver_id:
+        return {"status": False, "message": "You cannot call your own profile."}
+    if not ensure_active_user(data.caller_id) or not ensure_active_user(data.receiver_id):
+        return {"status": False, "message": "This profile is not available."}
+    available, reason = ensure_pair_available(data.caller_id, data.receiver_id)
+    if not available:
+        return {"status": False, "message": reason}
+    # Only one pending/active call per member at a time.
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    db.row_factory = sqlite3.Row
+    try:
+        now = time.time()
+        db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE status='ringing' AND created_at<?", (now, now - 45))
+        existing = db.execute("SELECT id FROM voice_calls WHERE status IN ('ringing','active') AND (caller_id IN (?,?) OR receiver_id IN (?,?)) LIMIT 1",
+                               (data.caller_id,data.receiver_id,data.caller_id,data.receiver_id)).fetchone()
+        if existing:
+            return {"status": False, "message": "One of these members is already on another call. Try again shortly."}
+        call_id = uuid.uuid4().hex
+        db.execute("INSERT INTO voice_calls(id,caller_id,receiver_id,offer_sdp,status,created_at) VALUES(?,?,?,?,?,?)",
+                   (call_id,data.caller_id,data.receiver_id,data.offer,"ringing",now))
+        db.commit()
+        return {"status": True, "call_id": call_id, "message": "Calling…"}
+    finally:
+        db.close()
+
+@app.get("/voice-calls/incoming/{user_id}")
+def voice_call_incoming(user_id: int):
+    if not ensure_active_user(user_id):
+        return {"status": True, "call": None}
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    db.row_factory = sqlite3.Row
+    try:
+        now = time.time()
+        db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE status='ringing' AND created_at<?", (now, now - 45))
+        row = db.execute("""
+            SELECT v.id,v.caller_id,v.offer_sdp,u.name AS caller_name
+            FROM voice_calls v JOIN users u ON u.id=v.caller_id
+            WHERE v.receiver_id=? AND v.status='ringing'
+            ORDER BY v.created_at DESC LIMIT 1
+        """, (user_id,)).fetchone()
+        if not row:
+            return {"status": True, "call": None}
+        return {"status": True, "call": {"call_id":row["id"],"caller_id":row["caller_id"],"caller_name":row["caller_name"],"offer":row["offer_sdp"]}}
+    finally:
+        db.close()
+
+@app.post("/voice-calls/answer")
+def voice_call_answer(data: VoiceCallAnswerModel):
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        row = db.execute("SELECT receiver_id,status,created_at FROM voice_calls WHERE id=?", (data.call_id,)).fetchone()
+        if not row or int(row[0]) != int(data.user_id):
+            return {"status": False, "message": "Call not found."}
+        if row[1] != "ringing" or time.time() - float(row[2]) > 45:
+            db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE id=?", (time.time(), data.call_id)); db.commit()
+            return {"status": False, "message": "This call has expired."}
+        db.execute("UPDATE voice_calls SET answer_sdp=?,status='active',started_at=? WHERE id=? AND status='ringing'",
+                   (data.answer,time.time(),data.call_id))
+        db.commit()
+        return {"status": True, "message": "Call connected."}
+    finally:
+        db.close()
+
+@app.get("/voice-calls/{call_id}")
+def voice_call_status(call_id: str, user_id: int):
+    data = _voice_call_row(call_id)
+    if not data or int(user_id) not in (int(data["caller_id"]), int(data["receiver_id"])):
+        return JSONResponse(status_code=404, content={"status":"ended","message":"Call not found."})
+    return {"status":data["status"],"answer":data["answer_sdp"],"started_at":data["started_at"]}
+
+@app.post("/voice-calls/end")
+def voice_call_end(data: VoiceCallEndModel):
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        row = db.execute("SELECT caller_id,receiver_id,status FROM voice_calls WHERE id=?", (data.call_id,)).fetchone()
+        if not row or int(data.user_id) not in (int(row[0]),int(row[1])):
+            return {"status": True, "message": "Call already ended."}
+        final_status = "rejected" if data.rejected else "ended"
+        db.execute("UPDATE voice_calls SET status=?,ended_at=? WHERE id=? AND status IN ('ringing','active')",
+                   (final_status,time.time(),data.call_id))
+        db.commit()
+        return {"status": True, "message": "Call ended."}
+    finally:
+        db.close()

@@ -4247,8 +4247,9 @@ try{
 
     <div class="pmFullActions">
       <button class="pmFullInterest"
-              onclick="sendInterest(${p.id})">
-        ❤️ Send Interest
+              style="background:linear-gradient(110deg,#16a34a,#0d9488);"
+              onclick="pmStartVoiceCall(${Number(p.id)},'${String(p.name||'Member').replace(/'/g,"\\'")}')">
+        📞 Call (2 min free)
       </button>
 
       <button class="pmFullChat"
@@ -4639,6 +4640,131 @@ document.addEventListener("DOMContentLoaded", function(){
 </script>
 
 
+
+
+<div id="pmVoiceCallPanel" class="hidden" style="position:fixed;inset:0;z-index:100000;background:rgba(25,10,22,.78);padding:18px;display:none;align-items:center;justify-content:center">
+  <div style="width:min(100%,380px);background:#fff;border-radius:24px;padding:24px;text-align:center;box-shadow:0 20px 70px #0005">
+    <div style="font-size:42px">📞</div>
+    <h2 id="pmVoiceCallTitle" style="margin:10px 0;color:#8f245e">Voice call</h2>
+    <p id="pmVoiceCallStatus" style="color:#666;margin:8px 0">Connecting securely…</p>
+    <div id="pmVoiceCallTimer" style="font-size:32px;font-weight:900;color:#d72f62;margin:18px 0">02:00</div>
+    <p style="font-size:12px;color:#777;margin-bottom:16px">Free call limit: 2 minutes. After the call, Premium is available for longer conversations.</p>
+    <button onclick="pmEndVoiceCall(true)" style="width:100%;padding:13px;border:0;border-radius:13px;background:#e11d48;color:white;font-weight:800;font-size:16px">🔴 End Call</button>
+  </div>
+</div>
+<div id="pmIncomingCallPanel" class="hidden" style="position:fixed;inset:0;z-index:100001;background:rgba(25,10,22,.78);padding:18px;display:none;align-items:center;justify-content:center">
+  <div style="width:min(100%,360px);background:#fff;border-radius:24px;padding:24px;text-align:center">
+    <div style="font-size:42px">💗</div><h2 id="pmIncomingCallName">Incoming call</h2>
+    <p style="color:#666;margin:12px 0">A member wants to start a voice call (up to 2 minutes).</p>
+    <div style="display:flex;gap:10px"><button id="pmAcceptCallBtn" style="flex:1;padding:12px;border:0;border-radius:12px;background:#16a34a;color:white;font-weight:800">Accept</button><button id="pmDeclineCallBtn" style="flex:1;padding:12px;border:0;border-radius:12px;background:#e11d48;color:white;font-weight:800">Decline</button></div>
+  </div>
+</div>
+<script>
+/* Additive Prem Milan voice calls: WebRTC audio, 120-second free limit. */
+(function(){
+  const api = window.PM_API || "https://lovely-matrimony-q4vn.onrender.com";
+  let pc=null, callId=null, callTimer=null, pollTimer=null, incomingTimer=null, connectedAt=0, currentCallName="", role="";
+  let lastIncomingId=null, busy=false;
+  const panel=()=>document.getElementById("pmVoiceCallPanel");
+  const incoming=()=>document.getElementById("pmIncomingCallPanel");
+  const show=(el,on)=>{if(!el)return;el.style.display=on?"flex":"none";el.classList.toggle("hidden",!on)};
+  const status=(s)=>{const e=document.getElementById("pmVoiceCallStatus");if(e)e.textContent=s};
+  const waitIce=peer=>new Promise(resolve=>{
+    if(peer.iceGatheringState==="complete")return resolve();
+    const done=()=>{if(peer.iceGatheringState==="complete"){peer.removeEventListener("icegatheringstatechange",done);resolve();}};
+    peer.addEventListener("icegatheringstatechange",done);
+    setTimeout(()=>{peer.removeEventListener("icegatheringstatechange",done);resolve();},8000);
+  });
+  async function post(path,data){const r=await fetch(api+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const d=await r.json();if(!r.ok||!d.status)throw new Error(d.message||"Call request failed");return d;}
+  async function get(path){const r=await fetch(api+path,{cache:"no-store"});if(!r.ok)throw new Error("Call service unavailable");return r.json();}
+  function cleanup(){
+    if(callTimer)clearInterval(callTimer);if(pollTimer)clearInterval(pollTimer);
+    callTimer=pollTimer=null;
+    if(pc){try{pc.ontrack=null;pc.close()}catch(e){}pc=null;}
+    callId=null;role="";busy=false;show(panel(),false);
+  }
+  function startClock(){
+    connectedAt=Date.now();show(panel(),true);status("Connected ❤️");
+    const tick=()=>{
+      const left=Math.max(0,120-Math.floor((Date.now()-connectedAt)/1000));
+      const t=document.getElementById("pmVoiceCallTimer");if(t)t.textContent=String(Math.floor(left/60)).padStart(2,"0")+":"+String(left%60).padStart(2,"0");
+      if(left<=0){pmEndVoiceCall(false,true);}
+    };
+    tick();callTimer=setInterval(tick,1000);
+  }
+  async function makePeer(){
+    pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+    pc.ontrack=e=>{
+      let audio=document.getElementById("pmRemoteCallAudio");
+      if(!audio){audio=document.createElement("audio");audio.id="pmRemoteCallAudio";audio.autoplay=true;audio.playsInline=true;document.body.appendChild(audio);}
+      audio.srcObject=e.streams[0];audio.play().catch(()=>{});
+    };
+    pc.onconnectionstatechange=()=>{if(pc&&["failed","disconnected","closed"].includes(pc.connectionState)&&callId){status("Call connection ended.");}};
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    stream.getTracks().forEach(track=>pc.addTrack(track,stream));
+  }
+  window.pmStartVoiceCall=async function(receiverId,name){
+    const uid=Number(localStorage.getItem("userId"));
+    if(!uid){alert("Please login first.");return;}
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.RTCPeerConnection){alert("Voice calls need a supported browser and HTTPS. Please open the secure app URL.");return;}
+    if(busy){alert("A call is already active.");return;}
+    busy=true;role="caller";currentCallName=name||"Member";document.getElementById("pmVoiceCallTitle").textContent="Calling "+currentCallName+"…";show(panel(),true);status("Requesting microphone permission…");
+    try{
+      await makePeer();
+      const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitIce(pc);
+      const d=await post("/voice-calls/start",{caller_id:uid,receiver_id:Number(receiverId),offer:pc.localDescription.sdp});
+      callId=d.call_id;status("Ringing… waiting for answer");
+      pollTimer=setInterval(async()=>{
+        if(!callId||role!=="caller")return;
+        try{const s=await get("/voice-calls/"+callId+"?user_id="+uid);
+          if(s.status==="rejected"||s.status==="ended"||s.status==="expired"){status("Call ended.");setTimeout(()=>cleanup(),900);return;}
+          if(s.answer&&!pc.currentRemoteDescription){await pc.setRemoteDescription({type:"answer",sdp:s.answer});startClock();}
+          if(s.status==="active"&&connectedAt===0)startClock();
+        }catch(e){status("Reconnecting…");}
+      },900);
+    }catch(e){cleanup();alert(e.message||"Could not start call. Check microphone permission and try again.");}
+  };
+  async function acceptCall(id,callerName,offer,uid){
+    busy=true;role="receiver";callId=id;currentCallName=callerName||"Member";
+    document.getElementById("pmVoiceCallTitle").textContent="Call with "+currentCallName;show(incoming(),false);show(panel(),true);status("Connecting…");
+    try{
+      await makePeer();await pc.setRemoteDescription({type:"offer",sdp:offer});
+      const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await waitIce(pc);
+      await post("/voice-calls/answer",{call_id:id,user_id:uid,answer:pc.localDescription.sdp});
+      startClock();
+      pollTimer=setInterval(async()=>{
+        if(!callId||role!=="receiver")return;
+        try{const s=await get("/voice-calls/"+callId+"?user_id="+uid);if(["ended","expired","rejected"].includes(s.status)){status("Call ended.");setTimeout(()=>cleanup(),800);}}catch(e){}
+      },900);
+    }catch(e){await post("/voice-calls/end",{call_id:id,user_id:uid}).catch(()=>{});cleanup();alert("Call could not connect. Please check microphone permission.");}
+  }
+  window.pmEndVoiceCall=async function(userInitiated,limitReached){
+    const oldId=callId,uid=Number(localStorage.getItem("userId"));
+    if(oldId&&uid)await post("/voice-calls/end",{call_id:oldId,user_id:uid}).catch(()=>{});
+    cleanup();
+    const audio=document.getElementById("pmRemoteCallAudio");if(audio){audio.srcObject=null;}
+    if(limitReached){if(typeof window.showSection==="function")window.showSection("premium");else if(typeof window.buyPremium==="function")window.buyPremium();else alert("Your 2-minute free call is over. Please choose a Premium plan for longer calls.");}
+    else if(userInitiated)status("Call ended.");
+  };
+  document.getElementById("pmAcceptCallBtn").onclick=async()=>{
+    if(!window._pmPendingVoiceCall)return;
+    const c=window._pmPendingVoiceCall;window._pmPendingVoiceCall=null;
+    await acceptCall(c.call_id,c.caller_name,c.offer,Number(localStorage.getItem("userId")));
+  };
+  document.getElementById("pmDeclineCallBtn").onclick=async()=>{
+    const c=window._pmPendingVoiceCall;window._pmPendingVoiceCall=null;show(incoming(),false);
+    if(c)await post("/voice-calls/end",{call_id:c.call_id,user_id:Number(localStorage.getItem("userId")),rejected:true}).catch(()=>{});
+  };
+  async function checkIncoming(){
+    const uid=Number(localStorage.getItem("userId"));if(!uid||busy)return;
+    try{const d=await get("/voice-calls/incoming/"+uid);const c=d.call;if(!c||c.call_id===lastIncomingId)return;
+      lastIncomingId=c.call_id;window._pmPendingVoiceCall=c;document.getElementById("pmIncomingCallName").textContent=(c.caller_name||"A member")+" is calling…";show(incoming(),true);
+    }catch(e){}
+  }
+  incomingTimer=setInterval(checkIncoming,1600);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkIncoming();});
+})();
+</script>
 
 </body>
 
