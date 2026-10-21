@@ -601,6 +601,7 @@ background:#f7f7f7;
 
 
 
+.pmFullCall{background:linear-gradient(110deg,#16a34a,#0d9488)!important;box-shadow:0 7px 16px rgba(22,163,74,.18)}
 </style>
 
 
@@ -830,7 +831,6 @@ body{background:radial-gradient(ellipse at 8% 12%,rgba(255,255,255,.48),transpar
 .pmFullCard{background:linear-gradient(145deg,#fff,#fff7fa);border:1px solid #ffe0e9;border-radius:20px;box-shadow:0 9px 24px rgba(143,36,94,.08)}
 .pmFullItem{border:1px solid #f8dce6!important;background:rgba(255,255,255,.9)!important;border-radius:13px}
 .pmFullAbout{background:linear-gradient(120deg,#fff0f5,#f8f0ff)!important;border:1px solid #f5d7e5}
-.pmFullInterest{background:linear-gradient(110deg,#ff416c,#b52b78)!important;box-shadow:0 7px 16px rgba(204,38,94,.18)}
 .pmFullChat{background:#fff0f5!important;color:#9a245c!important;border:1px solid #f5cddd!important}
 .pmInlineState{background:rgba(255,255,255,.92);border:1px solid #ffe0e9;border-radius:18px;padding:22px;color:#8f245e}
 .pmLovePhotoZoom{position:fixed;inset:0;z-index:100000;background:rgba(23,8,20,.94);display:none;align-items:center;justify-content:center;flex-direction:column;padding:14px;touch-action:pan-y}
@@ -1209,10 +1209,6 @@ onclick="showSection('notification');loadNotifications();">
 ❤️ My Matches
 </div>
 
-<div class="menuItem" onclick="showSection('interest');loadReceivedInterests();closeMenu();">
-💌 Interests
-</div>
-
 <div class="menuItem" onclick="openChatSection();closeMenu();">
 💬 Chat
 </div>
@@ -1419,19 +1415,6 @@ No Profiles Found
 <div id="matchesList">
 
 No Matches Found
-
-</div>
-
-</div>
-
-
-<div id="interestSection" class="hidden">
-
-<h2 style="margin-bottom:20px;">💌 Received Interests</h2>
-
-<div id="interestList">
-
-No Interests Found
 
 </div>
 
@@ -1874,7 +1857,6 @@ Profile
 .pmFullAbout{margin-top:14px;background:#f7f7fa;padding:14px;border-radius:16px;line-height:1.7;white-space:pre-wrap}
 .pmFullActions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}
 .pmFullActions button{border:0;border-radius:14px;padding:13px;font-weight:900;cursor:pointer}
-.pmFullInterest{background:linear-gradient(135deg,#ff2d55,#ff6f8f);color:#fff}
 .pmFullChat{background:#eee;color:#222}
 .pmInlineState{text-align:center;padding:35px;color:#777}
 @media(max-width:520px){.pmFullGrid{grid-template-columns:1fr}.pmFullHeroMain{height:min(68dvh,480px)}.pmFullName{font-size:24px}}
@@ -2229,7 +2211,7 @@ async function loadPrivateDatingProfiles(){
   try{const result=await window.pmApiFetch("/private-dating/profiles/"+encodeURIComponent(localStorage.getItem("userId")),{cache:"no-store"},1);
     if(!result.active){box.innerHTML='<div class="pmPrivateStatus">'+escapeHtml(result.message||"A verified ₹59/month subscription is required.")+'</div>';return;}
     const profiles=result.profiles||[];if(!profiles.length){box.innerHTML='<div class="pmPrivateStatus">No eligible profiles are available right now. Please check again later.</div>';return;}
-    box.innerHTML=profiles.map(u=>{const photo=u.photo?window.PM_API+u.photo:"";return `<article class="pmPrivateProfile"><div style="display:flex;gap:12px;align-items:center">${photo?`<img loading="lazy" src="${photo}" alt="Profile photo" style="width:78px;height:78px;border-radius:16px;object-fit:cover">`:'<div style="width:78px;height:78px;border-radius:16px;background:#fff0f5;display:grid;place-items:center;font-size:30px">❤️</div>'}<div><h3>${escapeHtml(u.name||"Member")}</h3><p style="font-size:13px;color:#666;margin-top:5px">${Number(u.age)||"—"} yrs · ${escapeHtml(u.city||"Location not added")}</p><p style="font-size:12px;color:#777;margin-top:4px">${escapeHtml(u.education||"")} ${u.occupation?'· '+escapeHtml(u.occupation):''}</p></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><button class="btn" onclick="sendInterest(${Number(u.id)})">❤️ Interest</button><button class="btn" style="background:#17a2b8" onclick="viewProfile(${Number(u.id)})">👀 View Profile</button></div></article>`;}).join("");
+    box.innerHTML=profiles.map(u=>{const photo=u.photo?window.PM_API+u.photo:"";return `<article class="pmPrivateProfile"><div style="display:flex;gap:12px;align-items:center">${photo?`<img loading="lazy" src="${photo}" alt="Profile photo" style="width:78px;height:78px;border-radius:16px;object-fit:cover">`:'<div style="width:78px;height:78px;border-radius:16px;background:#fff0f5;display:grid;place-items:center;font-size:30px">❤️</div>'}<div><h3>${escapeHtml(u.name||"Member")}</h3><p style="font-size:13px;color:#666;margin-top:5px">${Number(u.age)||"—"} yrs · ${escapeHtml(u.city||"Location not added")}</p><p style="font-size:12px;color:#777;margin-top:4px">${escapeHtml(u.education||"")} ${u.occupation?'· '+escapeHtml(u.occupation):''}</p></div></div><div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px"><button class="btn" style="background:#17a2b8" onclick="viewProfile(${Number(u.id)})">👀 View Profile</button></div></article>`;}).join("");
   }catch(e){box.innerHTML='<div class="pmPrivateStatus">Could not load profiles. Please retry in a moment.</div>';console.error("Private Dating profiles",e);}
 }
 
@@ -3178,60 +3160,6 @@ pmRetryLater("matches",loadMatches);
 }
 
 
-async function sendInterest(receiverId){
-
-const senderId=localStorage.getItem("userId");
-
-if(!senderId){
-
-alert("Please login first.");
-
-return;
-
-}
-
-try{
-
-const response=await fetch("https://lovely-matrimony-q4vn.onrender.com/send-interest",{
-
-method:"POST",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify({
-
-sender_id:parseInt(senderId),
-
-receiver_id:receiverId
-
-})
-
-});
-
-const result=await response.json();
-
-if(result.status){
-
-alert("❤️ "+result.message);
-
-}else{
-
-alert(result.message);
-
-}
-
-}catch(error){
-
-console.log(error);
-
-pmQuietRetry("server");
-
-}
-
-}
-
 async function searchPartner(){
 
 const box=document.getElementById("searchResult");
@@ -3285,8 +3213,7 @@ try{
         <div>📏 ${escapeHtml(user.height||"—")}</div><div>🛕 ${escapeHtml(user.religion||"—")}</div>
         <div>👥 ${escapeHtml(user.caste||"—")}</div><div>📍 ${escapeHtml(user.city||"—")}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:13px;">
-        <button class="btn" style="padding:11px;font-size:14px;" onclick="sendInterest(${user.id})">❤️ Interest</button>
+      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:13px;">
         <button class="btn" style="padding:11px;font-size:14px;background:#17a2b8;" onclick="viewProfile(${user.id})">👀 View Profile</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
@@ -3302,114 +3229,6 @@ try{
 }finally{
   if(button){button.disabled=false;button.textContent=button.dataset.oldText||"🔍 Search";}
 }
-}
-
-
-async function loadReceivedInterests(){
-
-const userId=localStorage.getItem("userId");
-
-try{
-
-const response=await fetch("https://lovely-matrimony-q4vn.onrender.com/received-interests/"+userId);
-
-const result=await response.json();
-
-if(!result.status){
-
-return;
-
-}
-
-let html="";
-
-if(result.interests.length===0){
-
-html="<h3>No Interests Received ❤️</h3>";
-
-}else{
-
-result.interests.forEach(user=>{
-
-html+=`
-
-<div style="
-background:white;
-padding:15px;
-margin-bottom:15px;
-border-radius:15px;
-box-shadow:0 5px 15px rgba(0,0,0,.1);
-text-align:left;
-">
-
-<img
-src="${user.photo ? 'https://lovely-matrimony-q4vn.onrender.com'+user.photo : ''}"
-style="
-width:80px;
-height:80px;
-border-radius:50%;
-object-fit:cover;
-border:3px solid #ff4d6d;
-">
-
-<h3>${user.name}</h3>
-
-<p>🎂 Age : ${user.age}</p>
-
-<p>📏 Height : ${user.height}</p>
-
-<p>🛕 Religion : ${user.religion}</p>
-
-<p>👥 Caste : ${user.caste}</p>
-
-<p>🎓 ${user.education}</p>
-
-<p>💼 ${user.occupation}</p>
-
-<p>📍 ${user.city}</p>
-
-<p><b>Status :</b> ${user.status}</p>
-
-<div style="margin-top:15px;">
-
-<button
-class="btn"
-style="margin-bottom:10px;background:#28a745;"
-onclick="interestAction(${user.interest_id},'Accepted')">
-
-✅ Accept
-
-</button>
-
-<button
-class="btn"
-style="background:#dc3545;"
-onclick="interestAction(${user.interest_id},'Rejected')">
-
-❌ Reject
-
-</button>
-
-</div>
-
-</div>
-
-`;
-
-});
-
-}
-
-document.getElementById("interestList").innerHTML=html;
-
-}catch(error){
-
-console.log(error);
-
-pmRetryLater("interests",loadReceivedInterests);
-
-}
-
 }
 
 
@@ -3600,7 +3419,7 @@ window.currentSection=page;
 
 const sections=[
 "homeSection","searchSection","matchesSection","chatSection","premiumSection","privateDatingSection",
-"profileSection","userProfileSection","interestSection","editProfileSection",
+"profileSection","userProfileSection","editProfileSection",
 "favoriteSection","notificationSection","settingsSection"
 ];
 
@@ -3916,48 +3735,6 @@ try{
 }
 
 
-async function interestAction(interestId,status){
-
-try{
-
-const response=await fetch("https://lovely-matrimony-q4vn.onrender.com/interest-action",{
-
-method:"POST",
-
-headers:{
-"Content-Type":"application/json"
-},
-
-body:JSON.stringify({
-
-interest_id:interestId,
-
-status:status
-
-})
-
-});
-
-const result=await response.json();
-
-alert(result.message);
-
-if(result.status){
-
-loadReceivedInterests();
-
-}
-
-}catch(error){
-
-console.log(error);
-
-pmQuietRetry("server");
-
-}
-
-}
-
 async function blockUser(receiverId = currentReceiver){
 
 const userId = localStorage.getItem("userId");
@@ -4246,7 +4023,7 @@ try{
     </div>
 
     <div class="pmFullActions">
-      <button class="pmFullInterest"
+      <button class="pmFullCall"
               style="background:linear-gradient(110deg,#16a34a,#0d9488);"
               onclick="pmStartVoiceCall(${Number(p.id)},'${String(p.name||'Member').replace(/'/g,"\\'")}')">
         📞 Call (2 min free)
@@ -4371,12 +4148,10 @@ async function pmOpenProfile(id){
 }
 function pmSelectImage(el,url){document.getElementById("pmHeroImage").src=url;document.querySelectorAll(".pmThumbs img").forEach(x=>x.classList.remove("active"));el.classList.add("active")}
 function pmCloseProfile(){document.getElementById("pmProfileModal").classList.add("hidden")}
-async function pmSendInterest(id){const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/send-interest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sender_id:+uid,receiver_id:id})})).json();alert(d.message)}
 function pmStartChat(id,name){pmCloseProfile();currentReceiver=id;currentReceiverName=name;if(typeof showSection==="function")showSection("chat");if(typeof openChat==="function")openChat(id,name)}
 async function pmLoadMatches(){const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");if(!uid||!box)return;box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";try{const d=await (await fetch(PM_API+"/smart-matches/"+uid)).json();if(!d.status)return box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';if(!d.matches.length)return box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px"><div style="flex:1"><div style="font-size:19px;font-weight:800">${u.name} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${u.city||'—'}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${u.match_percent}% Match</div><div style="font-size:12px;color:#777">${(u.match_reasons||[]).join(' • ')||'Compatible profile'}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmCelebrateMatch(${Number(u.match_percent)||0});pmOpenProfile(${u.id})">View Full Profile</button></div></div>`).join("")}catch(e){box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';pmRetryLater("smart_matches",pmLoadMatches);}}
 window.loadMatches=pmLoadMatches;window.profileModalView=pmOpenProfile;window.viewProfile=viewProfile;
 const _pmLoadEdit=window.loadEditProfile;window.loadEditProfile=async function(){if(typeof _pmLoadEdit==='function')await _pmLoadEdit();pmLoadGallery()};
-window.interestAction=async function(interestId,status){try{const uid=localStorage.getItem('userId'),d=await (await fetch(PM_API+'/received-interests/'+uid)).json(),item=(d.interests||[]).find(x=>x.interest_id==interestId);if(!item)return;const r=await (await fetch(PM_API+'/respond-interest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:+uid,other_id:item.sender_id,status})})).json();alert(r.message);if(typeof loadReceivedInterests==='function')loadReceivedInterests()}catch(e){pmQuietRetry('interest_action')}};
 </script>
 
 
@@ -4648,23 +4423,23 @@ document.addEventListener("DOMContentLoaded", function(){
     <h2 id="pmVoiceCallTitle" style="margin:10px 0;color:#8f245e">Voice call</h2>
     <p id="pmVoiceCallStatus" style="color:#666;margin:8px 0">Connecting securely…</p>
     <div id="pmVoiceCallTimer" style="font-size:32px;font-weight:900;color:#d72f62;margin:18px 0">02:00</div>
-    <p style="font-size:12px;color:#777;margin-bottom:16px">Free call limit: 2 minutes. After the call, Premium is available for longer conversations.</p>
+    <p style="font-size:12px;color:#777;margin-bottom:16px">Free members get 2 minutes. Premium members can talk without a time limit.</p>
     <button onclick="pmEndVoiceCall(true)" style="width:100%;padding:13px;border:0;border-radius:13px;background:#e11d48;color:white;font-weight:800;font-size:16px">🔴 End Call</button>
   </div>
 </div>
 <div id="pmIncomingCallPanel" class="hidden" style="position:fixed;inset:0;z-index:100001;background:rgba(25,10,22,.78);padding:18px;display:none;align-items:center;justify-content:center">
   <div style="width:min(100%,360px);background:#fff;border-radius:24px;padding:24px;text-align:center">
     <div style="font-size:42px">💗</div><h2 id="pmIncomingCallName">Incoming call</h2>
-    <p style="color:#666;margin:12px 0">A member wants to start a voice call (up to 2 minutes).</p>
+    <p style="color:#666;margin:12px 0">A member wants to start a voice call.</p>
     <div style="display:flex;gap:10px"><button id="pmAcceptCallBtn" style="flex:1;padding:12px;border:0;border-radius:12px;background:#16a34a;color:white;font-weight:800">Accept</button><button id="pmDeclineCallBtn" style="flex:1;padding:12px;border:0;border-radius:12px;background:#e11d48;color:white;font-weight:800">Decline</button></div>
   </div>
 </div>
 <script>
-/* Additive Prem Milan voice calls: WebRTC audio, 120-second free limit. */
+/* Prem Milan voice calls: free callers get 120 seconds; Premium callers are unlimited. */
 (function(){
   const api = window.PM_API || "https://lovely-matrimony-q4vn.onrender.com";
   let pc=null, callId=null, callTimer=null, pollTimer=null, incomingTimer=null, connectedAt=0, currentCallName="", role="";
-  let lastIncomingId=null, busy=false;
+  let lastIncomingId=null, busy=false, callLimitSeconds=120;
   const panel=()=>document.getElementById("pmVoiceCallPanel");
   const incoming=()=>document.getElementById("pmIncomingCallPanel");
   const show=(el,on)=>{if(!el)return;el.style.display=on?"flex":"none";el.classList.toggle("hidden",!on)};
@@ -4683,12 +4458,19 @@ document.addEventListener("DOMContentLoaded", function(){
     if(pc){try{pc.ontrack=null;pc.close()}catch(e){}pc=null;}
     callId=null;role="";busy=false;show(panel(),false);
   }
-  function startClock(){
-    connectedAt=Date.now();show(panel(),true);status("Connected ❤️");
+  function startClock(limitSeconds){
+    connectedAt=Date.now();
+    if(Number.isFinite(Number(limitSeconds))) callLimitSeconds=Math.max(0,Number(limitSeconds));
+    show(panel(),true);status("Connected ❤️");
+    const timer=document.getElementById("pmVoiceCallTimer");
+    const note=panel()?.querySelector("p");
+    const unlimited=callLimitSeconds===0;
+    if(note)note.textContent=unlimited?"Premium call: unlimited duration ❤️":"Free call limit: 2 minutes. After the call, Premium is available for longer conversations.";
     const tick=()=>{
-      const left=Math.max(0,120-Math.floor((Date.now()-connectedAt)/1000));
-      const t=document.getElementById("pmVoiceCallTimer");if(t)t.textContent=String(Math.floor(left/60)).padStart(2,"0")+":"+String(left%60).padStart(2,"0");
-      if(left<=0){pmEndVoiceCall(false,true);}
+      const elapsed=Math.floor((Date.now()-connectedAt)/1000);
+      const left=Math.max(0,callLimitSeconds-elapsed);
+      if(timer)timer.textContent=unlimited?("⏱ "+String(Math.floor(elapsed/60)).padStart(2,"0")+":"+String(elapsed%60).padStart(2,"0")):String(Math.floor(left/60)).padStart(2,"0")+":"+String(left%60).padStart(2,"0");
+      if(!unlimited&&left<=0){pmEndVoiceCall(false,true);}
     };
     tick();callTimer=setInterval(tick,1000);
   }
@@ -4713,13 +4495,13 @@ document.addEventListener("DOMContentLoaded", function(){
       await makePeer();
       const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitIce(pc);
       const d=await post("/voice-calls/start",{caller_id:uid,receiver_id:Number(receiverId),offer:pc.localDescription.sdp});
-      callId=d.call_id;status("Ringing… waiting for answer");
+      callId=d.call_id;callLimitSeconds=Number(d.call_limit_seconds??120);status("Ringing… waiting for answer");
       pollTimer=setInterval(async()=>{
         if(!callId||role!=="caller")return;
         try{const s=await get("/voice-calls/"+callId+"?user_id="+uid);
           if(s.status==="rejected"||s.status==="ended"||s.status==="expired"){status("Call ended.");setTimeout(()=>cleanup(),900);return;}
-          if(s.answer&&!pc.currentRemoteDescription){await pc.setRemoteDescription({type:"answer",sdp:s.answer});startClock();}
-          if(s.status==="active"&&connectedAt===0)startClock();
+          if(s.answer&&!pc.currentRemoteDescription){await pc.setRemoteDescription({type:"answer",sdp:s.answer});startClock(callLimitSeconds);}
+          if(s.status==="active"&&connectedAt===0)startClock(callLimitSeconds);
         }catch(e){status("Reconnecting…");}
       },900);
     }catch(e){cleanup();alert(e.message||"Could not start call. Check microphone permission and try again.");}
@@ -4749,7 +4531,7 @@ document.addEventListener("DOMContentLoaded", function(){
   document.getElementById("pmAcceptCallBtn").onclick=async()=>{
     if(!window._pmPendingVoiceCall)return;
     const c=window._pmPendingVoiceCall;window._pmPendingVoiceCall=null;
-    await acceptCall(c.call_id,c.caller_name,c.offer,Number(localStorage.getItem("userId")));
+    await acceptCall(c.call_id,c.caller_name,c.offer,Number(localStorage.getItem("userId")),c.call_limit_seconds);
   };
   document.getElementById("pmDeclineCallBtn").onclick=async()=>{
     const c=window._pmPendingVoiceCall;window._pmPendingVoiceCall=null;show(incoming(),false);

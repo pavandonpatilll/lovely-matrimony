@@ -97,7 +97,7 @@ async def firebase_mirror_middleware(request, call_next):
     sync_paths = {
         "/register", "/update-profile", "/change-password",
         "/send-message", "/upload-chat-photo", "/delete-message",
-        "/send-interest", "/respond-interest", "/block-user",
+        "/block-user",
         "/favorite", "/remove-favorite", "/premium",
         "/upload-profile-photo", "/upload-profile-photos",
         "/delete-profile-photo", "/set-main-photo",
@@ -1870,264 +1870,6 @@ def search_users(data: SearchModel):
     }
 
 # =====================================================
-# SEND INTEREST
-# =====================================================
-
-@app.post("/send-interest")
-def send_interest(data: InterestModel):
-
-    if data.sender_id == data.receiver_id:
-
-        return {
-
-            "status": False,
-            "message": "Invalid User"
-
-        }
-
-    available, reason = ensure_pair_available(data.sender_id, data.receiver_id)
-    if not available:
-        return {"status":False,"message":reason}
-
-    cursor.execute(
-
-        """
-        SELECT id
-
-        FROM interests
-
-        WHERE sender_id=?
-        AND receiver_id=?
-
-        """,
-
-        (
-            data.sender_id,
-            data.receiver_id
-        )
-
-    )
-
-    if cursor.fetchone():
-
-        return {
-
-            "status": False,
-            "message": "Interest Already Sent"
-
-        }
-
-    cursor.execute(
-
-        """
-        INSERT INTO interests(
-
-        sender_id,
-        receiver_id
-
-        )
-
-        VALUES(
-
-        ?,?
-
-        )
-
-        """,
-
-        (
-            data.sender_id,
-            data.receiver_id
-        )
-
-    )
-
-    conn.commit()
-
-    cursor.execute("SELECT name FROM users WHERE id=?", (data.sender_id,))
-    sender_row = cursor.fetchone()
-    sender_name = (sender_row["name"] if sender_row else "A member")
-    create_notification(
-        data.receiver_id,
-        "New Interest ❤️",
-        f"{sender_name} sent you an interest. Open Received Interests to Accept or Reject."
-    )
-
-    return {
-
-        "status": True,
-        "message": "Interest Sent Successfully"
-
-    }
-
-
-# =====================================================
-# INTEREST ACTION (ACCEPT / REJECT)
-# =====================================================
-
-@app.post("/interest-action")
-def interest_action(data: InterestActionModel):
-
-    cursor.execute(
-        """
-        SELECT id
-        FROM interests
-        WHERE id=?
-        """,
-        (data.interest_id,)
-    )
-
-    interest = cursor.fetchone()
-
-    if interest is None:
-
-        return {
-            "status": False,
-            "message": "Interest Not Found"
-        }
-
-    cursor.execute(
-        """
-        UPDATE interests
-        SET status=?
-        WHERE id=?
-        """,
-        (
-            data.status,
-            data.interest_id
-        )
-    )
-
-    conn.commit()
-
-    return {
-        "status": True,
-        "message": "Interest " + data.status + " Successfully ❤️"
-    }
-
-# =====================================================
-# RECEIVED INTERESTS
-# =====================================================
-
-@app.get("/received-interests/{user_id}")
-
-def received_interests(user_id:int):
-
-    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","interests":[]}
-
-    cursor.execute(
-
-        """
-
-        SELECT
-
-        interests.id AS interest_id,
-
-        interests.status,
-
-        users.id AS sender_id,
-
-        users.name,
-
-        users.age,
-
-        users.height,
-
-        users.religion,
-
-        users.caste,
-
-        users.education,
-
-        users.occupation,
-
-        users.city,
-
-        users.photo
-
-        FROM interests
-
-        INNER JOIN users
-
-        ON interests.sender_id = users.id
-
-        WHERE interests.receiver_id=?
-
-        ORDER BY interests.id DESC
-
-        """,
-
-        (user_id,)
-
-    )
-
-    data = cursor.fetchall()
-
-    return{
-
-        "status":True,
-
-        "total":len(data),
-
-        "interests":[dict(row) for row in data]
-
-    }
-
-
-# =====================================================
-# SENT INTERESTS
-# =====================================================
-
-@app.get("/sent-interests/{user_id}")
-def sent_interests(user_id:int):
-
-    if not ensure_active_user(user_id): return {"status":False,"message":"This profile has been disabled by admin.","interests":[]}
-
-    cursor.execute(
-
-        """
-        SELECT
-
-        interests.id,
-        interests.status,
-
-        users.id as receiver_id,
-        users.name,
-        users.age,
-        users.city,
-        users.photo
-
-        FROM interests
-
-        JOIN users
-
-        ON interests.receiver_id = users.id
-
-        WHERE interests.sender_id = ?
-
-        ORDER BY interests.id DESC
-
-        """,
-
-        (
-            user_id,
-        )
-
-    )
-
-    data = cursor.fetchall()
-
-    return {
-
-        "status": True,
-
-        "total": len(data),
-
-        "interests": [dict(i) for i in data]
-
-    }
-
-# =====================================================
 # SEND MESSAGE
 # =====================================================
 
@@ -3797,80 +3539,6 @@ def admin_matches():
 # =====================================================
 # SMART MATCHES
 # =====================================================
-
-@app.get("/smart-matches/{user_id}")
-def smart_matches(user_id:int):
-    cursor.execute("SELECT * FROM users WHERE id=?",(user_id,))
-    me=cursor.fetchone()
-    if me is None:
-        return {"status":False,"message":"User not found","matches":[]}
-
-    my_gender=str(me["gender"] or "").strip().lower()
-    wanted_gender = "female" if my_gender == "male" else "male" if my_gender == "female" else ""
-    if not wanted_gender:
-        return {"status":True,"matches":[],"message":"Please complete your gender in profile to get suitable matches."}
-    cursor.execute("""
-        SELECT id,name,gender,age,height,religion,caste,education,occupation,city,state,country,photo,is_verified
-        FROM users
-        WHERE id!=? AND lower(trim(coalesce(gender,'')))=?
-          AND NOT ((lower(trim(coalesce(gender,''))) IN ('female','f') AND CAST(coalesce(age,0) AS INTEGER)>=30)
-                   OR (lower(trim(coalesce(gender,''))) IN ('male','m') AND CAST(coalesce(age,0) AS INTEGER)>=35)
-                   OR COALESCE(is_deleted,0)!=0)
-        ORDER BY id DESC
-        LIMIT 60
-    """,(user_id,wanted_gender))
-    rows=cursor.fetchall()
-    out=[]
-    for r in rows:
-        d=dict(r)
-        score=40
-        reasons=[]
-        if me["religion"] and d["religion"] and me["religion"].strip().lower()==d["religion"].strip().lower(): score+=15;reasons.append("Same religion")
-        if me["caste"] and d["caste"] and me["caste"].strip().lower()==d["caste"].strip().lower(): score+=10;reasons.append("Same caste")
-        if me["city"] and d["city"] and me["city"].strip().lower()==d["city"].strip().lower(): score+=10;reasons.append("Same city")
-        if me["education"] and d["education"] and me["education"].strip().lower()==d["education"].strip().lower(): score+=8;reasons.append("Similar education")
-        if me["occupation"] and d["occupation"] and me["occupation"].strip().lower()==d["occupation"].strip().lower(): score+=5;reasons.append("Similar career")
-        d["match_percent"]=min(score,99)
-        d["match_reasons"]=reasons
-        d["mutual_match"]=False
-        out.append(d)
-    out.sort(key=lambda x:(-x["match_percent"], -int(x["id"])))
-    return {"status":True,"matches":out[:30]}
-
-
-@app.post("/respond-interest")
-def respond_interest(data:dict):
-    try:
-        user_id=int(data.get("user_id",0))
-        other_id=int(data.get("other_id",0))
-    except (TypeError, ValueError):
-        return {"status":False,"message":"Invalid user"}
-    status=str(data.get("status","")).strip().title()
-    if status not in {"Accepted","Rejected"}:
-        return {"status":False,"message":"Choose Accept or Reject."}
-    if user_id == other_id or not ensure_active_user(user_id) or not ensure_active_user(other_id):
-        return {"status":False,"message":"This profile is unavailable."}
-    cursor.execute("""
-        SELECT id FROM interests
-        WHERE sender_id=? AND receiver_id=?
-        ORDER BY id DESC LIMIT 1
-    """,(other_id,user_id))
-    row=cursor.fetchone()
-    if row is None:
-        return {"status":False,"message":"Interest not found."}
-    cursor.execute("UPDATE interests SET status=? WHERE id=?",(status,row["id"]))
-    conn.commit()
-    cursor.execute("SELECT name FROM users WHERE id=?", (user_id,))
-    receiver_row=cursor.fetchone()
-    receiver_name=receiver_row["name"] if receiver_row else "A member"
-    if status == "Accepted":
-        create_notification(other_id,"Interest Accepted ❤️",f"{receiver_name} accepted your interest.")
-    else:
-        create_notification(other_id,"Interest Update",f"{receiver_name} declined your interest.")
-    return {"status":True,"message":"Interest "+status+" successfully ❤️"}
-
-
-# =====================================================
 # MY MATCHES
 # =====================================================
 
@@ -3966,6 +3634,10 @@ CREATE TABLE IF NOT EXISTS voice_calls(
 )
 """)
 cursor.execute("CREATE INDEX IF NOT EXISTS idx_voice_calls_receiver_status ON voice_calls(receiver_id,status,created_at)")
+try:
+    cursor.execute("ALTER TABLE voice_calls ADD COLUMN call_limit_seconds INTEGER NOT NULL DEFAULT 120")
+except sqlite3.OperationalError:
+    pass
 conn.commit()
 
 class VoiceCallStartModel(BaseModel):
@@ -3991,8 +3663,9 @@ def _voice_call_row(call_id):
         if not row:
             return None
         data = dict(row)
-        # Server-side expiry means the call cannot remain active beyond two minutes.
-        if data["status"] == "active" and data["started_at"] and time.time() - float(data["started_at"]) >= 120:
+        # Free caller calls expire server-side after 120 seconds; Premium callers are unlimited.
+        limit_seconds = int(data.get("call_limit_seconds") if data.get("call_limit_seconds") is not None else 120)
+        if limit_seconds > 0 and data["status"] == "active" and data["started_at"] and time.time() - float(data["started_at"]) >= limit_seconds:
             db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE id=? AND status='active'", (time.time(), str(call_id)))
             db.commit()
             data["status"] = "expired"
@@ -4020,10 +3693,12 @@ def voice_call_start(data: VoiceCallStartModel):
         if existing:
             return {"status": False, "message": "One of these members is already on another call. Try again shortly."}
         call_id = uuid.uuid4().hex
-        db.execute("INSERT INTO voice_calls(id,caller_id,receiver_id,offer_sdp,status,created_at) VALUES(?,?,?,?,?,?)",
-                   (call_id,data.caller_id,data.receiver_id,data.offer,"ringing",now))
+        # Premium callers receive unlimited-duration calls; free callers get 120 seconds.
+        call_limit_seconds = 0 if user_has_premium(data.caller_id) else 120
+        db.execute("INSERT INTO voice_calls(id,caller_id,receiver_id,offer_sdp,status,created_at,call_limit_seconds) VALUES(?,?,?,?,?,?,?)",
+                   (call_id,data.caller_id,data.receiver_id,data.offer,"ringing",now,call_limit_seconds))
         db.commit()
-        return {"status": True, "call_id": call_id, "message": "Calling…"}
+        return {"status": True, "call_id": call_id, "call_limit_seconds": call_limit_seconds, "message": "Calling…"}
     finally:
         db.close()
 
@@ -4037,14 +3712,14 @@ def voice_call_incoming(user_id: int):
         now = time.time()
         db.execute("UPDATE voice_calls SET status='expired',ended_at=? WHERE status='ringing' AND created_at<?", (now, now - 45))
         row = db.execute("""
-            SELECT v.id,v.caller_id,v.offer_sdp,u.name AS caller_name
+            SELECT v.id,v.caller_id,v.offer_sdp,v.call_limit_seconds,u.name AS caller_name
             FROM voice_calls v JOIN users u ON u.id=v.caller_id
             WHERE v.receiver_id=? AND v.status='ringing'
             ORDER BY v.created_at DESC LIMIT 1
         """, (user_id,)).fetchone()
         if not row:
             return {"status": True, "call": None}
-        return {"status": True, "call": {"call_id":row["id"],"caller_id":row["caller_id"],"caller_name":row["caller_name"],"offer":row["offer_sdp"]}}
+        return {"status": True, "call": {"call_id":row["id"],"caller_id":row["caller_id"],"caller_name":row["caller_name"],"offer":row["offer_sdp"],"call_limit_seconds":int(row["call_limit_seconds"] if row["call_limit_seconds"] is not None else 120)}}
     finally:
         db.close()
 
@@ -4070,7 +3745,7 @@ def voice_call_status(call_id: str, user_id: int):
     data = _voice_call_row(call_id)
     if not data or int(user_id) not in (int(data["caller_id"]), int(data["receiver_id"])):
         return JSONResponse(status_code=404, content={"status":"ended","message":"Call not found."})
-    return {"status":data["status"],"answer":data["answer_sdp"],"started_at":data["started_at"]}
+    return {"status":data["status"],"answer":data["answer_sdp"],"started_at":data["started_at"],"call_limit_seconds":int(data.get("call_limit_seconds") if data.get("call_limit_seconds") is not None else 120)}
 
 @app.post("/voice-calls/end")
 def voice_call_end(data: VoiceCallEndModel):
