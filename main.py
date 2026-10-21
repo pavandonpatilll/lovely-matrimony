@@ -667,6 +667,17 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 conn.commit()
 
+# Admin moderation is stored separately from member-to-member blocks.
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS admin_blocks(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    reason TEXT DEFAULT 'Blocked by admin',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+conn.commit()
+
 # =====================================================
 # REPORTS TABLE
 # =====================================================
@@ -3195,6 +3206,26 @@ def admin_users():
 
     }
 
+@app.post("/admin/block-user/{user_id}")
+def admin_block_user(user_id: int):
+    """Disable a member from the admin panel and keep a moderation audit record."""
+    cursor.execute("SELECT id, is_deleted FROM users WHERE id=?", (user_id,))
+    user = cursor.fetchone()
+    if user is None:
+        return {"status": False, "message": "User not found."}
+    if int(user[1] or 0) == 1:
+        return {"status": True, "message": "This user is already blocked or disabled."}
+    cursor.execute(
+        "INSERT INTO admin_blocks(user_id,reason) VALUES(?,?) "
+        "ON CONFLICT(user_id) DO UPDATE SET reason=excluded.reason, created_at=CURRENT_TIMESTAMP",
+        (user_id, "Blocked by admin")
+    )
+    cursor.execute("UPDATE users SET is_deleted=1, deleted_at=CURRENT_TIMESTAMP WHERE id=?", (user_id,))
+    conn.commit()
+    firebase_sync_async()
+    return {"status": True, "message": "User blocked by admin and access disabled."}
+
+
 @app.get("/admin/blocked-users")
 def admin_blocked_users():
 
@@ -3227,9 +3258,7 @@ def admin_blocked_users():
     blocks = []
 
     for row in rows:
-
         blocks.append({
-
             "id": row[0],
             "user": row[1],
             "blocked": row[2],
@@ -3237,7 +3266,22 @@ def admin_blocked_users():
             "date": row[4],
             "user_deleted": bool(row[5]),
             "blocked_deleted": bool(row[6])
+        })
 
+    cursor.execute("""
+        SELECT ab.id, u.name, ab.reason, ab.created_at, COALESCE(u.is_deleted,0)
+        FROM admin_blocks ab JOIN users u ON u.id=ab.user_id
+        ORDER BY ab.id DESC
+    """)
+    for row in cursor.fetchall():
+        blocks.append({
+            "id": "A" + str(row[0]),
+            "user": "Admin",
+            "blocked": row[1],
+            "reason": row[2] or "Blocked by admin",
+            "date": row[3],
+            "user_deleted": False,
+            "blocked_deleted": bool(row[4])
         })
 
     return {

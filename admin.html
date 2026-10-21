@@ -723,8 +723,7 @@ function openPremiumUsers(){
 
 document.getElementById("premiumPopup").style.display="block";
 
-loadPremiumUsers();
-loadSubscriptions();
+Promise.allSettled([loadPremiumUsers(),loadSubscriptions()]);
 
 }
 
@@ -1087,7 +1086,7 @@ async function pmAdminLogin(){
   const r=await pmAdminNativeFetch(API+"/admin-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
   const d=await r.json();if(!r.ok||!d.status||!d.token)throw new Error(d.message||"Sign in failed.");
   sessionStorage.setItem("pmAdminToken",d.token);document.getElementById("pmAdminGate").style.display="none";
-  await loadUsers(); await loadReports(); await loadMatches(); await loadBlockedUsers();
+  await Promise.allSettled([loadUsers(),loadReports(),loadMatches(),loadBlockedUsers()]);
  }catch(e){msg.textContent=e.message||"Could not sign in. Check server and credentials.";}
  finally{button.disabled=false;button.textContent="Sign in securely";}
 }

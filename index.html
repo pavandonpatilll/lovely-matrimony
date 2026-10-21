@@ -3213,8 +3213,9 @@ try{
         <div>📏 ${escapeHtml(user.height||"—")}</div><div>🛕 ${escapeHtml(user.religion||"—")}</div>
         <div>👥 ${escapeHtml(user.caste||"—")}</div><div>📍 ${escapeHtml(user.city||"—")}</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:13px;">
-        <button class="btn" style="padding:11px;font-size:14px;background:#17a2b8;" onclick="viewProfile(${user.id})">👀 View Profile</button>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:13px;">
+        <button class="btn" style="padding:11px 7px;font-size:14px;background:#17a2b8;min-width:0;" onclick="viewProfile(${Number(user.id)})">👀 View Profile</button>
+        <button class="btn pmFullCall" data-pm-call-label="1" style="padding:11px 7px;font-size:14px;min-width:0;" onclick="pmStartVoiceCall(${Number(user.id)},'${String(user.name||'Member').replace(/'/g, "\\'")}')">📞 ${window.pmPremiumActive===true?'Call':'Call (2 min)'}</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
         <button class="btn" style="padding:10px;font-size:13px;background:#ff9800;" onclick="addFavorite(${user.id})">⭐ Favorite</button>
@@ -4023,10 +4024,10 @@ try{
     </div>
 
     <div class="pmFullActions">
-      <button class="pmFullCall"
+      <button class="pmFullCall" data-pm-call-label="1"
               style="background:linear-gradient(110deg,#16a34a,#0d9488);"
               onclick="pmStartVoiceCall(${Number(p.id)},'${String(p.name||'Member').replace(/'/g,"\\'")}')">
-        📞 Call (2 min free)
+        📞 ${window.pmPremiumActive===true?'Call':'Call (2 min)'}
       </button>
 
       <button class="pmFullChat"
@@ -4210,7 +4211,13 @@ document.addEventListener("DOMContentLoaded", function(){
   if(localStorage.getItem("userId")){
     pmGetPremiumStatus().then(function(s){
       window.pmPremiumActive=!!(s && s.status && s.premium);
-    }).catch(function(){window.pmPremiumActive=false;});
+      document.querySelectorAll('[data-pm-call-label="1"]').forEach(function(button){
+        button.textContent=window.pmPremiumActive?'📞 Call':'📞 Call (2 min)';
+      });
+    }).catch(function(){
+      window.pmPremiumActive=false;
+      document.querySelectorAll('[data-pm-call-label="1"]').forEach(function(button){button.textContent='📞 Call (2 min)';});
+    });
   }
 });
 </script>
@@ -4506,14 +4513,15 @@ document.addEventListener("DOMContentLoaded", function(){
       },900);
     }catch(e){cleanup();alert(e.message||"Could not start call. Check microphone permission and try again.");}
   };
-  async function acceptCall(id,callerName,offer,uid){
+  async function acceptCall(id,callerName,offer,uid,incomingLimitSeconds=120){
     busy=true;role="receiver";callId=id;currentCallName=callerName||"Member";
+    callLimitSeconds=Math.max(0,Number(incomingLimitSeconds??120));
     document.getElementById("pmVoiceCallTitle").textContent="Call with "+currentCallName;show(incoming(),false);show(panel(),true);status("Connecting…");
     try{
       await makePeer();await pc.setRemoteDescription({type:"offer",sdp:offer});
       const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await waitIce(pc);
       await post("/voice-calls/answer",{call_id:id,user_id:uid,answer:pc.localDescription.sdp});
-      startClock();
+      startClock(callLimitSeconds);
       pollTimer=setInterval(async()=>{
         if(!callId||role!=="receiver")return;
         try{const s=await get("/voice-calls/"+callId+"?user_id="+uid);if(["ended","expired","rejected"].includes(s.status)){status("Call ended.");setTimeout(()=>cleanup(),800);}}catch(e){}
