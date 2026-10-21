@@ -4508,7 +4508,7 @@ document.addEventListener("DOMContentLoaded", function(){
 /* Prem Milan voice calls: free callers get 120 seconds; Premium callers are unlimited. */
 (function(){
   const api = window.PM_API || "https://lovely-matrimony-q4vn.onrender.com";
-  let pc=null, callId=null, callTimer=null, pollTimer=null, incomingTimer=null, connectedAt=0, currentCallName="", role="";
+  let pc=null, localStream=null, callId=null, callTimer=null, pollTimer=null, incomingTimer=null, connectedAt=0, currentCallName="", role="";
   let lastIncomingId=null, busy=false, callLimitSeconds=120;
   const panel=()=>document.getElementById("pmVoiceCallPanel");
   const incoming=()=>document.getElementById("pmIncomingCallPanel");
@@ -4525,8 +4525,21 @@ document.addEventListener("DOMContentLoaded", function(){
   function cleanup(){
     if(callTimer)clearInterval(callTimer);if(pollTimer)clearInterval(pollTimer);
     callTimer=pollTimer=null;
+    if(localStream){try{localStream.getTracks().forEach(track=>track.stop())}catch(e){}localStream=null;}
     if(pc){try{pc.ontrack=null;pc.close()}catch(e){}pc=null;}
-    callId=null;role="";busy=false;show(panel(),false);
+    const audio=document.getElementById("pmRemoteCallAudio");if(audio){try{audio.pause();audio.srcObject=null}catch(e){}}
+    callId=null;role="";busy=false;connectedAt=0;show(panel(),false);
+  }
+  function openPremiumAfterCall(){
+    cleanup();
+    if(typeof window.showSection==="function")window.showSection("premium");
+    else if(typeof window.buyPremium==="function")window.buyPremium();
+    else alert("Your 2-minute free call is over. Please choose a Premium plan for longer calls.");
+  }
+  function limitHasElapsed(s){
+    const limit=Number(s&&s.call_limit_seconds);
+    const started=Number(s&&s.started_at);
+    return Number.isFinite(limit)&&limit>0&&Number.isFinite(started)&&started>0&&(Date.now()/1000-started)>=limit;
   }
   function startClock(limitSeconds){
     connectedAt=Date.now();
@@ -4552,8 +4565,8 @@ document.addEventListener("DOMContentLoaded", function(){
       audio.srcObject=e.streams[0];audio.play().catch(()=>{});
     };
     pc.onconnectionstatechange=()=>{if(pc&&["failed","disconnected","closed"].includes(pc.connectionState)&&callId){status("Call connection ended.");}};
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-    stream.getTracks().forEach(track=>pc.addTrack(track,stream));
+    localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
   }
   window.pmStartVoiceCall=async function(receiverId,name){
     const uid=Number(localStorage.getItem("userId"));
@@ -4569,7 +4582,10 @@ document.addEventListener("DOMContentLoaded", function(){
       pollTimer=setInterval(async()=>{
         if(!callId||role!=="caller")return;
         try{const s=await get("/voice-calls/"+callId+"?user_id="+uid);
-          if(s.status==="rejected"||s.status==="ended"||s.status==="expired"){status("Call ended.");setTimeout(()=>cleanup(),900);return;}
+          if(s.status==="rejected"||s.status==="ended"||s.status==="expired"){
+            if(limitHasElapsed(s)){openPremiumAfterCall();return;}
+            status("Call ended.");setTimeout(()=>cleanup(),900);return;
+          }
           if(s.answer&&!pc.currentRemoteDescription){await pc.setRemoteDescription({type:"answer",sdp:s.answer});startClock(callLimitSeconds);}
           if(s.status==="active"&&connectedAt===0)startClock(callLimitSeconds);
         }catch(e){status("Reconnecting…");}
@@ -4587,7 +4603,13 @@ document.addEventListener("DOMContentLoaded", function(){
       startClock(callLimitSeconds);
       pollTimer=setInterval(async()=>{
         if(!callId||role!=="receiver")return;
-        try{const s=await get("/voice-calls/"+callId+"?user_id="+uid);if(["ended","expired","rejected"].includes(s.status)){status("Call ended.");setTimeout(()=>cleanup(),800);}}catch(e){}
+        try{
+          const s=await get("/voice-calls/"+callId+"?user_id="+uid);
+          if(["ended","expired","rejected"].includes(s.status)){
+            if(limitHasElapsed(s)){openPremiumAfterCall();return;}
+            status("Call ended.");setTimeout(()=>cleanup(),800);
+          }
+        }catch(e){}
       },900);
     }catch(e){await post("/voice-calls/end",{call_id:id,user_id:uid}).catch(()=>{});cleanup();alert("Call could not connect. Please check microphone permission.");}
   }
@@ -4595,7 +4617,6 @@ document.addEventListener("DOMContentLoaded", function(){
     const oldId=callId,uid=Number(localStorage.getItem("userId"));
     if(oldId&&uid)await post("/voice-calls/end",{call_id:oldId,user_id:uid}).catch(()=>{});
     cleanup();
-    const audio=document.getElementById("pmRemoteCallAudio");if(audio){audio.srcObject=null;}
     if(limitReached){if(typeof window.showSection==="function")window.showSection("premium");else if(typeof window.buyPremium==="function")window.buyPremium();else alert("Your 2-minute free call is over. Please choose a Premium plan for longer calls.");}
     else if(userInitiated)status("Call ended.");
   };

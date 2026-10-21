@@ -3820,8 +3820,10 @@ def voice_call_start(data: VoiceCallStartModel):
         if existing:
             return {"status": False, "message": "One of these members is already on another call. Try again shortly."}
         call_id = uuid.uuid4().hex
-        # Premium callers receive unlimited-duration calls; free callers get 120 seconds.
-        call_limit_seconds = 0 if user_has_premium(data.caller_id) else 120
+        # Unlimited duration is available only when BOTH members have active Premium.
+        # If either member is free, the shared call ends after 120 seconds.
+        both_premium = user_has_premium(data.caller_id) and user_has_premium(data.receiver_id)
+        call_limit_seconds = 0 if both_premium else 120
         db.execute("INSERT INTO voice_calls(id,caller_id,receiver_id,offer_sdp,status,created_at,call_limit_seconds) VALUES(?,?,?,?,?,?,?)",
                    (call_id,data.caller_id,data.receiver_id,data.offer,"ringing",now,call_limit_seconds))
         db.commit()
