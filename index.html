@@ -672,9 +672,6 @@ button,input,select,textarea{font:inherit;max-width:100%;}
 @media(max-width:600px){.pmPremiumPage{padding-top:4px}.pmPremiumHero{padding:25px 20px;border-radius:23px}.pmPlanCard{padding:19px;border-radius:22px}.pmPremiumPerks{margin-top:21px}}
 
 </style>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
 <script>
 (function pmConnectivityMonitor(){
@@ -999,40 +996,7 @@ window.pmWakeServer=function(){
 })();
 window.pmWakeServer();
 </script>
-<script>
-// Network hardening: retry Render API requests once on transient network/5xx failures.
-// Normal successful requests are not delayed. Uploads and JSON calls both use the same guard.
-(function installPmNetworkGuard(){
-  if(window.__pmNetworkGuardInstalled)return;
-  window.__pmNetworkGuardInstalled=true;
-  const nativeFetch=window.fetch.bind(window);
-  window.fetch=async function(input,init){
-    let url="";
-    try{url=typeof input==="string"?input:(input&&input.url)||"";}catch(e){}
-    const isPmApi=!!url && url.startsWith(window.PM_API||"");
-    if(!isPmApi)return nativeFetch(input,init);
-    const method=String((init&&init.method)||(input&&input.method)||"GET").toUpperCase();
-    // Only idempotent reads may be retried. Never replay registration, chat, uploads or payments.
-    const safeToRetry=(method==="GET"||method==="HEAD");
-    const attempts=safeToRetry?2:1;
-    let lastError=null;
-    for(let attempt=0;attempt<attempts;attempt++){
-      try{
-        const response=await nativeFetch(input,init);
-        if(safeToRetry && response.status>=502 && attempt<attempts-1){
-          await new Promise(r=>setTimeout(r,180*(attempt+1)));
-          continue;
-        }
-        return response;
-      }catch(error){
-        lastError=error;
-        if(safeToRetry && attempt<attempts-1)await new Promise(r=>setTimeout(r,180*(attempt+1)));
-      }
-    }
-    throw lastError||new Error("Unable to connect to server.");
-  };
-})();
-</script>
+
 
 <div class="card">
 
@@ -1649,7 +1613,7 @@ Send
 
 <div class="welcomeCard">
 
-<img id="profilePhoto" class="homeProfile">
+<img decoding="async" id="profilePhoto" class="homeProfile">
 
 <h2 id="profileName"></h2>
 
@@ -4212,6 +4176,9 @@ const _pmLoadEdit=window.loadEditProfile;window.loadEditProfile=async function()
 </script>
 
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 /* ================= PREM MILAN FIREBASE SAFE BRIDGE ================= */
 (function(){

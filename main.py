@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi import UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 import sqlite3
 import hashlib
@@ -74,6 +75,8 @@ PRIVATE_DATING_PLAN_LABEL = "Prem Milan Private Dating Monthly"
 # =====================================================
 # CORS
 # =====================================================
+
+app.add_middleware(GZipMiddleware, minimum_size=700)
 
 app.add_middleware(
     CORSMiddleware,
