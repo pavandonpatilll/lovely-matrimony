@@ -931,17 +931,19 @@ window.pmQuietRetry=function(label){
     console.warn("Prem Milan temporary network issue:",label);
   }catch(e){}
 };
-window.pmRetryLater=function(label,fn,delay=700){
+window.pmRetryLater=function(label,fn,delay=450){
+  // Bounded background retries: prevent a failed endpoint from retrying forever.
   try{
     const key="__pm_retry_count_"+String(label||"").replace(/[^a-z0-9_-]/gi,"_");
+    const stampKey=key+"_stamp";
+    const now=Date.now(), stamp=Number(sessionStorage.getItem(stampKey)||"0");
+    if(now-stamp>30000){sessionStorage.setItem(key,"0");sessionStorage.setItem(stampKey,String(now));}
     const n=Number(sessionStorage.getItem(key)||"0");
-    if(n>=2){sessionStorage.removeItem(key);return;}
+    if(n>=2)return;
     sessionStorage.setItem(key,String(n+1));
-    setTimeout(()=>{
-      Promise.resolve(fn()).finally(()=>{
-        try{sessionStorage.removeItem(key);}catch(e){}
-      });
-    },delay);
+    setTimeout(()=>{Promise.resolve().then(()=>fn()).catch(()=>{});},Math.max(250,Math.min(Number(delay)||450,1500)));
+    // Let the retry window expire naturally; do not clear the counter on failure.
+    setTimeout(()=>{try{if(Date.now()-Number(sessionStorage.getItem(stampKey)||"0")>=30000){sessionStorage.removeItem(key);sessionStorage.removeItem(stampKey);}}catch(e){}},30500);
   }catch(e){}
 };
 window.pmWakeServer=function(){
@@ -972,17 +974,17 @@ window.pmWakeServer=function(){
     if(method==='GET'&&inflight.has(key))return inflight.get(key).then(r=>r.clone());
     const task=(async()=>{
       let lastError;
-      for(let attempt=0;attempt<3;attempt++){
+      for(let attempt=0;attempt<2;attempt++){
         const controller=new AbortController();
-        const timer=setTimeout(()=>controller.abort(),18000);
+        const timer=setTimeout(()=>controller.abort(),10000);
         try{
           const response=await nativeFetch(input,{...init,signal:controller.signal});
           clearTimeout(timer);
-          if(response.status>=500&&attempt<2){lastError=new Error('Temporary API server response');await new Promise(r=>setTimeout(r,500*(attempt+1)));continue;}
+          if(response.status>=500&&attempt<1){lastError=new Error('Temporary API server response');await new Promise(r=>setTimeout(r,350));continue;}
           return response;
         }catch(e){
           clearTimeout(timer);lastError=e;
-          if(attempt<2)await new Promise(r=>setTimeout(r,500*(attempt+1)));
+          if(attempt<1)await new Promise(r=>setTimeout(r,350));
         }
       }
       throw lastError||new Error('Unable to connect to Prem Milan API');
@@ -2787,9 +2789,9 @@ async function openChat(receiverId,name){
   loadChat();
   refreshChatPresence();
   // Messages: quick refresh, but only while the tab is visible.
-  chatInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)loadChat(true);},2200);
+  chatInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver&&!pmChatLoadBusy)loadChat(true);},4000);
   // Presence/typing: lightweight endpoint, faster than reloading 200 messages.
-  chatPresenceInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)refreshChatPresence();},3500);
+  chatPresenceInterval=setInterval(()=>{if(document.visibilityState!=="hidden"&&currentReceiver)refreshChatPresence();},5000);
   // Use the single global presence heartbeat; do not send a duplicate every 10 seconds.
 }
 
@@ -3207,7 +3209,7 @@ try{
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify(body)
-  },2);
+  },1,9000);
 
   const profiles=result.profiles||[];
   if(!profiles.length){
@@ -4170,7 +4172,27 @@ async function pmOpenProfile(id){
 function pmSelectImage(el,url){document.getElementById("pmHeroImage").src=url;document.querySelectorAll(".pmThumbs img").forEach(x=>x.classList.remove("active"));el.classList.add("active")}
 function pmCloseProfile(){document.getElementById("pmProfileModal").classList.add("hidden")}
 function pmStartChat(id,name){pmCloseProfile();currentReceiver=id;currentReceiverName=name;if(typeof showSection==="function")showSection("chat");if(typeof openChat==="function")openChat(id,name)}
-async function pmLoadMatches(){const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");if(!uid||!box)return;box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";try{const d=await (await fetch(PM_API+"/smart-matches/"+uid)).json();if(!d.status)return box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';if(!d.matches.length)return box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px"><div style="flex:1"><div style="font-size:19px;font-weight:800">${u.name} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${u.city||'—'}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${u.match_percent}% Match</div><div style="font-size:12px;color:#777">${(u.match_reasons||[]).join(' • ')||'Compatible profile'}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmCelebrateMatch(${Number(u.match_percent)||0});pmOpenProfile(${u.id})">View Full Profile</button></div></div>`).join("")}catch(e){box.innerHTML='<div style="text-align:center;padding:25px;color:#777">Refreshing matches…</div>';pmRetryLater("smart_matches",pmLoadMatches);}}
+let pmMatchesLoadPromise=null;
+async function pmLoadMatches(){
+ const uid=localStorage.getItem("userId"),box=document.getElementById("matchesList");
+ if(!uid||!box)return;
+ if(pmMatchesLoadPromise)return pmMatchesLoadPromise;
+ pmMatchesLoadPromise=(async()=>{
+  const hasContent=!!box.dataset.loadedAt;
+  if(!hasContent)box.innerHTML="<div style='text-align:center;padding:25px'>Finding your best matches… 💕</div>";
+  try{
+   const d=await window.pmApiFetch("/smart-matches/"+encodeURIComponent(uid),{cache:"no-store"},1,9000);
+   if(!d||!d.status)throw new Error("Matches unavailable");
+   if(!Array.isArray(d.matches)||!d.matches.length){box.innerHTML="<div style='text-align:center;padding:30px'>No matching profiles yet ❤️</div>";box.dataset.loadedAt=String(Date.now());return;}
+   box.innerHTML=d.matches.map(u=>`<div style="background:#fff;border-radius:22px;padding:14px;margin:0 0 14px;box-shadow:0 8px 25px rgba(0,0,0,.10);display:flex;gap:13px;align-items:center"><img loading="lazy" decoding="async" src="${pmUrl(u.photo)}" style="width:88px;height:105px;object-fit:cover;border-radius:16px" onerror="this.style.visibility='hidden'"><div style="flex:1"><div style="font-size:19px;font-weight:800">${escapeHtml(u.name||"Member")} ${u.mutual_match?'❤️':''}</div><div style="color:#666;font-size:13px">${u.age||'—'} yrs · ${escapeHtml(u.city||'—')}</div><div style="color:#9b2cff;font-weight:800;margin:5px 0">💜 ${Number(u.match_percent)||0}% Match</div><div style="font-size:12px;color:#777">${escapeHtml((u.match_reasons||[]).join(' • ')||'Compatible profile')}</div><button class="btn" style="padding:9px;margin-top:8px;font-size:14px" onclick="pmCelebrateMatch(${Number(u.match_percent)||0});pmOpenProfile(${Number(u.id)||0})">View Full Profile</button></div></div>`).join("");
+   box.dataset.loadedAt=String(Date.now());
+  }catch(e){
+   if(!hasContent)box.innerHTML='<div style="text-align:center;padding:20px;color:#777">Connection slow hai. <button type="button" class="btn" style="width:auto;padding:8px 12px;margin-left:5px" onclick="loadMatches()">Try again</button></div>';
+   pmRetryLater("smart_matches",pmLoadMatches,600);
+  }finally{pmMatchesLoadPromise=null;}
+ })();
+ return pmMatchesLoadPromise;
+}
 window.loadMatches=pmLoadMatches;window.profileModalView=pmOpenProfile;window.viewProfile=viewProfile;
 const _pmLoadEdit=window.loadEditProfile;window.loadEditProfile=async function(){if(typeof _pmLoadEdit==='function')await _pmLoadEdit();pmLoadGallery()};
 </script>
@@ -4281,7 +4303,7 @@ document.addEventListener("DOMContentLoaded", function(){
    if(homeMatchesRequest)return homeMatchesRequest;
    homeMatchesRequest=(async()=>{try{
      const response=await fetch(api+'/smart-matches/'+encodeURIComponent(uid),{cache:'no-store'});const data=await response.json();
-     if(!data||!data.status||!Array.isArray(data.matches)){rail.innerHTML='<div class="pmHomeMatchEmpty">Matches refresh ho rahe hain. Thodi der baad try karein ❤️</div>';return;}
+     if(!data||!data.status||!Array.isArray(data.matches))throw new Error('Matches temporarily unavailable');
      if(!data.matches.length){rail.innerHTML='<div class="pmHomeMatchEmpty">Abhi compatible profiles nahi mile. Profile details complete karein ❤️</div>';return;}
      rail.innerHTML=data.matches.slice(0,12).map(u=>{
        const photo=u.photo?(String(u.photo).startsWith('http')?u.photo:api+u.photo):'';
