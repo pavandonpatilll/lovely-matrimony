@@ -4461,6 +4461,7 @@ document.addEventListener("DOMContentLoaded", function(){
     <p id="pmVoiceCallStatus" style="color:#666;margin:8px 0">Connecting securely…</p>
     <div id="pmVoiceCallTimer" style="font-size:32px;font-weight:900;color:#d72f62;margin:18px 0">02:00</div>
     <p style="font-size:12px;color:#777;margin-bottom:16px">Free members get 2 minutes. Premium members can talk without a time limit.</p>
+    <button id="pmEnableCallAudioBtn" onclick="pmEnableCallAudio()" style="display:none;width:100%;padding:12px;margin:0 0 10px;border:0;border-radius:13px;background:#7c3aed;color:white;font-weight:800">🔊 Enable speaker</button>
     <button onclick="pmEndVoiceCall(true)" style="width:100%;padding:13px;border:0;border-radius:13px;background:#e11d48;color:white;font-weight:800;font-size:16px">🔴 End Call</button>
   </div>
 </div>
@@ -4495,6 +4496,7 @@ document.addEventListener("DOMContentLoaded", function(){
     if(localStream){try{localStream.getTracks().forEach(track=>track.stop())}catch(e){}localStream=null;}
     if(pc){try{pc.ontrack=null;pc.close()}catch(e){}pc=null;}
     const audio=document.getElementById("pmRemoteCallAudio");if(audio){try{audio.pause();audio.srcObject=null}catch(e){}}
+    const audioButton=document.getElementById("pmEnableCallAudioBtn");if(audioButton)audioButton.style.display="none";
     callId=null;role="";busy=false;connectedAt=0;show(panel(),false);
   }
   async function currentUserHasPremium(){
@@ -4539,17 +4541,74 @@ document.addEventListener("DOMContentLoaded", function(){
     };
     tick();callTimer=setInterval(tick,1000);
   }
-  async function makePeer(){
-    pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-    pc.ontrack=e=>{
-      let audio=document.getElementById("pmRemoteCallAudio");
-      if(!audio){audio=document.createElement("audio");audio.id="pmRemoteCallAudio";audio.autoplay=true;audio.playsInline=true;document.body.appendChild(audio);}
-      audio.srcObject=e.streams[0];audio.play().catch(()=>{});
-    };
-    pc.onconnectionstatechange=()=>{if(pc&&["failed","disconnected","closed"].includes(pc.connectionState)&&callId){status("Call connection ended.");}};
-    localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-    localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+  // WebRTC connectivity: STUN helps direct connections; TURN relays audio when
+  // mobile networks, NATs, or Wi-Fi firewalls block direct peer-to-peer traffic.
+  // Replace the demo TURN credentials with your own TURN provider for production.
+  const PM_CALL_ICE_SERVERS = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turns:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" }
+  ];
+  // An owner can override the demo list by defining window.PM_ICE_SERVERS before this script.
+  function callIceServers(){
+    const custom = Array.isArray(window.PM_ICE_SERVERS) ? window.PM_ICE_SERVERS : null;
+    return custom && custom.length ? custom : PM_CALL_ICE_SERVERS;
   }
+  function getRemoteAudio(){
+    let audio=document.getElementById("pmRemoteCallAudio");
+    if(!audio){
+      audio=document.createElement("audio");audio.id="pmRemoteCallAudio";
+      audio.autoplay=true;audio.playsInline=true;audio.setAttribute("playsinline","");
+      audio.setAttribute("aria-label","Call audio");audio.style.display="none";
+      document.body.appendChild(audio);
+    }
+    return audio;
+  }
+  async function playRemoteAudio(){
+    const audio=getRemoteAudio();
+    if(!audio.srcObject)return;
+    try{
+      audio.muted=false;audio.volume=1;
+      await audio.play();
+    }catch(err){
+      status("Call connected. If you cannot hear audio, tap Enable speaker below.");
+      const b=document.getElementById("pmEnableCallAudioBtn");if(b)b.style.display="block";
+    }
+  }
+  async function makePeer(){
+    pc=new RTCPeerConnection({iceServers:callIceServers(), iceCandidatePoolSize:10});
+    pc.ontrack=e=>{
+      const audio=getRemoteAudio();
+      // Some browsers provide no streams on the track event; construct one safely.
+      const remoteStream=(e.streams&&e.streams[0])?e.streams[0]:new MediaStream([e.track]);
+      if(audio.srcObject!==remoteStream)audio.srcObject=remoteStream;
+      playRemoteAudio();
+    };
+    pc.onconnectionstatechange=()=>{
+      if(!pc||!callId)return;
+      if(pc.connectionState==="connected"){
+        status("Connected ❤️ — audio ready");playRemoteAudio();
+      }else if(pc.connectionState==="failed"){
+        status("Connection failed. Network may block calls; please retry on another network.");
+      }else if(pc.connectionState==="disconnected"){
+        status("Network interrupted — reconnecting…");
+      }
+    };
+    pc.oniceconnectionstatechange=()=>{
+      if(!pc||!callId)return;
+      if(pc.iceConnectionState==="failed")status("Audio route failed. TURN relay may be unavailable on this network.");
+    };
+    localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+    localStream.getAudioTracks().forEach(track=>{track.enabled=true;pc.addTrack(track,localStream);});
+  }
+  // Mobile browsers can block remote audio until the user explicitly taps a control.
+  window.pmEnableCallAudio=async function(){
+    const b=document.getElementById("pmEnableCallAudioBtn");
+    try{await playRemoteAudio();if(b)b.style.display="none";}
+    catch(e){status("Speaker could not start. Check device volume and browser audio permission.");}
+  };
   window.pmStartVoiceCall=async function(receiverId,name){
     const uid=Number(localStorage.getItem("userId"));
     if(!uid){alert("Please login first.");return;}
