@@ -1337,13 +1337,13 @@ font-weight:500;
   <section class="pmPlanCard">
     <div class="pmPlanHead"><span class="pmPlanBadge">BEST VALUE</span><span class="pmPlanHeart">♥</span></div>
     <p class="pmPlanName">Prem Milan Premium</p>
-    <div class="pmPlanPrice"><span>₹</span>15 <small>/ month</small></div>
-    <p class="pmPlanNote">Auto-renewing subscription billed securely by Google Play. Manage or cancel anytime in Google Play subscriptions.</p>
-    <button id="pmPremiumBuyButton" class="pmPremiumBuy" type="button" onclick="startPremiumCheckout()">Unlock Premium · ₹15 <span>→</span></button>
+    <div class="pmPlanPrice"><span>₹</span>15 <small>/ first 7 days</small></div>
+    <p class="pmPlanNote">Intro offer: ₹15 for the first 7 days, then ₹699 every week. Auto-renews until cancelled. Price and renewal terms are shown by Google Play before you confirm.</p>
+    <button id="pmPremiumBuyButton" class="pmPremiumBuy" type="button" onclick="startPremiumCheckout()">Start 7-day offer · ₹15 <span>→</span></button>
     <p class="pmSecureNote">🔒 Google Play Billing · Server verification required</p>
     <div id="pmPremiumPageStatus" class="pmPremiumStatus" aria-live="polite">Checking your membership…</div>
   </section>
-  <p class="pmPremiumFineprint">Premium access is linked to your account and activates only after the server verifies your payment. ₹15/month, auto-renewing through Google Play. You can manage or cancel the subscription in Google Play.</p>
+  <p class="pmPremiumFineprint">Introductory offer: ₹15 for 7 days, then ₹699 every 7 days, auto-renewing until cancelled. Final price and terms are confirmed in Google Play. Premium activates only after secure server verification.</p>
 </div>
 
 <!-- ================= SEARCH ================= -->
@@ -2058,7 +2058,7 @@ async function buyPremium(){
       if(button){button.textContent="Premium Active ✓";button.disabled=true;}
     }else{
       if(statusEl)statusEl.textContent="Your account is on the Free plan. Unlock Premium below.";
-      if(button){button.innerHTML="Unlock Premium · ₹15 <span>→</span>";button.disabled=false;}
+      if(button){button.innerHTML="Start 7-day offer · ₹15 <span>→</span>";button.disabled=false;}
     }
   }catch(e){
     if(statusEl)statusEl.textContent="Could not refresh membership right now. You can retry in a moment.";
@@ -2718,14 +2718,14 @@ function pmShowChatPremiumPoster(){
         <h2 id="pmPosterTitle">Make a meaningful<br>connection.</h2>
         <p>Unlock conversations and discover more compatible matches.</p>
       </div>
-      <div class="pmPosterPrice"><strong>₹15</strong><span>per month<br>auto-renewing plan</span></div>
+      <div class="pmPosterPrice"><strong>₹15</strong><span>first 7 days<br>then ₹699/week</span></div>
       <div class="pmPosterBenefits">
         <div><span class="pmPosterTick">✓</span><span>Unlimited chat while Premium is active</span></div>
         <div><span class="pmPosterTick">✓</span><span>Unlock all available matches</span></div>
         <div><span class="pmPosterTick">✓</span><span>Reply, react and keep the conversation going</span></div>
       </div>
-      <button class="pmPosterCTA" type="button" onclick="pmContinueToPremium()">Unlock Premium · ₹15/month&nbsp; →</button>
-      <p class="pmPosterFoot">Subscription renews automatically unless cancelled. Manage or cancel through Google Play.</p>
+      <button class="pmPosterCTA" type="button" onclick="pmContinueToPremium()">Start 7-day offer · ₹15&nbsp; →</button>
+      <p class="pmPosterFoot">₹15 for the first 7 days, then ₹699 every 7 days unless cancelled. Manage or cancel through Google Play.</p>
     </div>`;
     overlay.addEventListener("click",e=>{if(e.target===overlay)pmCloseChatPremiumPoster();});
     document.body.appendChild(overlay);

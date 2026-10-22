@@ -63,9 +63,16 @@ async def protect_admin_api(request: Request, call_next):
 # granted access to the app in Play Console. Never put this key in the frontend.
 GOOGLE_PLAY_PACKAGE_NAME = os.getenv("GOOGLE_PLAY_PACKAGE_NAME", "com.mycompany.matrimony").strip()
 GOOGLE_PLAY_PRODUCT_ID = "prem_milan_premium"
-GOOGLE_PLAY_BASE_PLAN_ID = "monthly-15-inr"
+# Keep the existing ₹15 monthly base plan working while also accepting the new
+# weekly ₹15 introductory offer that renews at ₹699/week.
+GOOGLE_PLAY_BASE_PLAN_ID = "monthly-15-inr"  # legacy plan; do not remove
+GOOGLE_PLAY_WEEKLY_BASE_PLAN_ID = "weekly-699-inr"
+GOOGLE_PLAY_WEEKLY_OFFER_ID = "intro-15-week"
+GOOGLE_PLAY_PREMIUM_BASE_PLAN_IDS = {GOOGLE_PLAY_BASE_PLAN_ID, GOOGLE_PLAY_WEEKLY_BASE_PLAN_ID}
 PREMIUM_AMOUNT_INR = 15
 PREMIUM_PLAN_LABEL = "Prem Milan Premium Monthly"
+PREMIUM_WEEKLY_AMOUNT_INR = 699
+PREMIUM_WEEKLY_PLAN_LABEL = "Prem Milan Premium Weekly (₹15 first week, then ₹699/week)"
 PRIVATE_DATING_PRODUCT_ID = "private_dating_59"
 PRIVATE_DATING_BASE_PLAN_ID = "monthly-59-inr"
 PRIVATE_DATING_AMOUNT_INR = 59
@@ -2858,10 +2865,21 @@ def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
         matching_items = [
             item for item in line_items
             if str(item.get("productId", "")) == GOOGLE_PLAY_PRODUCT_ID
-            and str((item.get("offerDetails") or {}).get("basePlanId", "")) == GOOGLE_PLAY_BASE_PLAN_ID
+            and str((item.get("offerDetails") or {}).get("basePlanId", "")) in GOOGLE_PLAY_PREMIUM_BASE_PLAN_IDS
         ]
         if not matching_items:
-            return {"status": False, "premium": False, "message": "Google Play purchase does not match the configured Prem Milan ₹15 monthly plan."}
+            return {"status": False, "premium": False, "message": "Google Play purchase does not match a supported Prem Milan Premium plan."}
+
+        # Record the plan that Google Play actually returned. The legacy monthly
+        # plan remains supported; the weekly plan's ₹699 is its renewal price.
+        selected_item = matching_items[0]
+        selected_base_plan = str((selected_item.get("offerDetails") or {}).get("basePlanId", ""))
+        if selected_base_plan == GOOGLE_PLAY_WEEKLY_BASE_PLAN_ID:
+            selected_plan_label = PREMIUM_WEEKLY_PLAN_LABEL
+            selected_plan_amount = PREMIUM_WEEKLY_AMOUNT_INR
+        else:
+            selected_plan_label = PREMIUM_PLAN_LABEL
+            selected_plan_amount = PREMIUM_AMOUNT_INR
 
         expiry_values = [str(item.get("expiryTime", "")) for item in matching_items if item.get("expiryTime")]
         if not expiry_values:
@@ -2906,7 +2924,7 @@ def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
                        end_date=?,status=?,play_state=?,auto_renewing=?,cancel_time=?,latest_order_id=?,
                        last_checked_at=?,acknowledgement_state=?,start_time=? WHERE id=?""",
                     (
-                        PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR, "google-play:" + product_id,
+                        selected_plan_label, selected_plan_amount, "google-play:" + product_id,
                         state, details.get("startTime") or now.isoformat(), expiry_dt.isoformat(),
                         "active", *lifecycle_values, int(existing["id"]),
                     ),
@@ -2918,7 +2936,7 @@ def verify_google_play_subscription(data: GooglePlaySubscriptionVerifyModel):
                         play_state,auto_renewing,cancel_time,latest_order_id,last_checked_at,acknowledgement_state,start_time)
                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        int(data.user_id), PREMIUM_PLAN_LABEL, PREMIUM_AMOUNT_INR,
+                        int(data.user_id), selected_plan_label, selected_plan_amount,
                         "google-play:" + product_id, state, details.get("startTime") or now.isoformat(),
                         expiry_dt.isoformat(), "active", purchase_token, *lifecycle_values,
                     ),
@@ -3327,7 +3345,7 @@ def admin_subscriptions():
             items = [
                 item for item in (details.get("lineItems") or [])
                 if str(item.get("productId", "")) == GOOGLE_PLAY_PRODUCT_ID
-                and str((item.get("offerDetails") or {}).get("basePlanId", "")) == GOOGLE_PLAY_BASE_PLAN_ID
+                and str((item.get("offerDetails") or {}).get("basePlanId", "")) in GOOGLE_PLAY_PREMIUM_BASE_PLAN_IDS
             ]
             if not items:
                 continue
