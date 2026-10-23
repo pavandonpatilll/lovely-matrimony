@@ -4512,7 +4512,16 @@ document.addEventListener("DOMContentLoaded", function(){
   });
   async function post(path,data){const r=await fetch(api+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const d=await r.json();if(!r.ok||!d.status)throw new Error(d.message||"Call request failed");return d;}
   async function get(path){const r=await fetch(api+path,{cache:"no-store"});if(!r.ok)throw new Error("Call service unavailable");return r.json();}
+  // Native Android builds route calls through communication audio; normal browsers safely no-op.
+  function setNativeCallAudioMode(enabled){
+    try{
+      if(window.PremMilanBilling && typeof window.PremMilanBilling.setCallAudioMode==="function"){
+        window.PremMilanBilling.setCallAudioMode(!!enabled);
+      }
+    }catch(e){}
+  }
   function cleanup(){
+    setNativeCallAudioMode(false);
     if(callTimer)clearInterval(callTimer);if(pollTimer)clearInterval(pollTimer);
     callTimer=pollTimer=null;
     if(localStream){try{localStream.getTracks().forEach(track=>track.stop())}catch(e){}localStream=null;}
@@ -4593,7 +4602,9 @@ document.addEventListener("DOMContentLoaded", function(){
     if(!audio.srcObject)return;
     try{
       audio.muted=false;audio.volume=1;
-      await audio.play();
+      const result=audio.play();
+      if(result && typeof result.then==="function") await result;
+      const b=document.getElementById("pmEnableCallAudioBtn");if(b)b.style.display="none";
     }catch(err){
       status("Call connected. If you cannot hear audio, tap Enable speaker below.");
       const b=document.getElementById("pmEnableCallAudioBtn");if(b)b.style.display="block";
@@ -4637,6 +4648,7 @@ document.addEventListener("DOMContentLoaded", function(){
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.RTCPeerConnection){alert("Voice calls need a supported browser and HTTPS. Please open the secure app URL.");return;}
     if(busy){alert("A call is already active.");return;}
     busy=true;role="caller";currentCallName=name||"Member";document.getElementById("pmVoiceCallTitle").textContent="Calling "+currentCallName+"…";show(panel(),true);status("Requesting microphone permission…");
+    setNativeCallAudioMode(true);
     try{
       await makePeer();
       const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitIce(pc);
@@ -4659,6 +4671,7 @@ document.addEventListener("DOMContentLoaded", function(){
     busy=true;role="receiver";callId=id;currentCallName=callerName||"Member";
     callLimitSeconds=Math.max(0,Number(incomingLimitSeconds??120));
     document.getElementById("pmVoiceCallTitle").textContent="Call with "+currentCallName;show(incoming(),false);show(panel(),true);status("Connecting…");
+    setNativeCallAudioMode(true);
     try{
       await makePeer();await pc.setRemoteDescription({type:"offer",sdp:offer});
       const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await waitIce(pc);
