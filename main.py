@@ -2073,69 +2073,76 @@ def message_reaction(data: MessageReactionModel):
 # =====================================================
 
 @app.get("/chat/{sender_id}/{receiver_id}")
-
-def get_chat(sender_id:int,receiver_id:int):
-
+def get_chat(sender_id: int, receiver_id: int):
     available, reason = ensure_pair_available(sender_id, receiver_id)
     if not available:
-        return {"status":True,"blocked":True,"message":reason,"messages":[]}
+        return {"status": True, "blocked": True, "message": reason, "messages": []}
+
     if not user_has_premium(sender_id):
-        db = sqlite3.connect(DB_PATH, timeout=10); db.row_factory = sqlite3.Row
-        try:
-            receiver = db.execute("SELECT gender,age FROM users WHERE id=?", (int(receiver_id),)).fetchone()
-            sender = db.execute("SELECT gender,age FROM users WHERE id=?", (int(sender_id),)).fetchone()
-            private_chat = bool(receiver and sender and (is_private_dating_profile(receiver) or is_private_dating_profile(sender)) and private_dating_active(sender_id))
-        finally:
-            db.close()
+        with sqlite3.connect(DB_PATH, timeout=15) as check_db:
+            check_db.row_factory = sqlite3.Row
+            receiver = check_db.execute(
+                "SELECT gender, age FROM users WHERE id=?", (int(receiver_id),)
+            ).fetchone()
+            sender = check_db.execute(
+                "SELECT gender, age FROM users WHERE id=?", (int(sender_id),)
+            ).fetchone()
+            private_chat = bool(
+                receiver and sender
+                and (is_private_dating_profile(receiver) or is_private_dating_profile(sender))
+                and private_dating_active(sender_id)
+            )
         if not private_chat:
-            return {"status":False,"premium_required":True,"message":"Regular chat ke liye Premium ₹15/month chahiye. Mature profiles ke liye Private Dating ₹59/month chahiye.","messages":[]}
+            return {
+                "status": False,
+                "premium_required": True,
+                "message": "Regular chat ke liye Premium subscription chahiye.",
+                "messages": [],
+            }
 
-    cursor.execute(
+    # Use a request-local SQLite connection/cursor. The shared global cursor can
+    # be interleaved by chat polling, search and other users' requests.
+    with sqlite3.connect(DB_PATH, timeout=15) as chat_db:
+        chat_db.row_factory = sqlite3.Row
+        chats = chat_db.execute(
+            """
+            SELECT * FROM (
+                SELECT *
+                FROM messages
+                WHERE (sender_id=? AND receiver_id=?)
+                   OR (sender_id=? AND receiver_id=?)
+                ORDER BY id DESC
+                LIMIT 200
+            ) recent_messages
+            ORDER BY id ASC
+            """,
+            (int(sender_id), int(receiver_id), int(receiver_id), int(sender_id)),
+        ).fetchall()
+        message_rows = [dict(row) for row in chats]
+        ids = [int(message["id"]) for message in message_rows]
+        by_id = {int(message["id"]): message for message in message_rows}
 
-        """
+        reaction_map = {}
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            reactions = chat_db.execute(
+                f"SELECT message_id, user_id, reaction FROM message_reactions "
+                f"WHERE message_id IN ({placeholders})",
+                ids,
+            ).fetchall()
+            for reaction in reactions:
+                reaction_map.setdefault(int(reaction["message_id"]), []).append(dict(reaction))
 
-        SELECT * FROM (
-            SELECT *
-            FROM messages
-            WHERE (sender_id=? AND receiver_id=?)
-               OR (sender_id=? AND receiver_id=?)
-            ORDER BY id DESC
-            LIMIT 200
-        ) recent_messages
-        ORDER BY id ASC
+        for message in message_rows:
+            message["reactions"] = reaction_map.get(int(message["id"]), [])
+            reply_id = message.get("reply_to_id")
+            original = by_id.get(int(reply_id)) if reply_id else None
+            message["reply_to"] = (
+                {"id": original["id"], "message": original.get("message") or "[Photo]"}
+                if original else None
+            )
 
-        """,
-
-        (
-
-            sender_id,
-
-            receiver_id,
-
-            receiver_id,
-
-            sender_id
-
-        )
-
-    )
-
-    chats=cursor.fetchall()
-    message_rows=[dict(row) for row in chats]
-    ids=[int(m["id"]) for m in message_rows]
-    by_id={int(m["id"]):m for m in message_rows}
-    if ids:
-        placeholders=",".join("?" for _ in ids)
-        cursor.execute(f"SELECT message_id,user_id,reaction FROM message_reactions WHERE message_id IN ({placeholders})",ids)
-        reaction_map={}
-        for rr in cursor.fetchall():
-            reaction_map.setdefault(int(rr["message_id"]),[]).append(dict(rr))
-        for msg in message_rows:
-            msg["reactions"]=reaction_map.get(int(msg["id"]),[])
-            rid=msg.get("reply_to_id")
-            original=by_id.get(int(rid)) if rid else None
-            msg["reply_to"]={"id":original["id"],"message":original.get("message") or "[Photo]"} if original else None
-    return {"status":True,"blocked":False,"messages":message_rows}
+    return {"status": True, "blocked": False, "messages": message_rows}
 
 
 # =====================================================
