@@ -4,3 +4,4 @@ python-multipart
 pydantic
 firebase-admin
 google-auth
+cloudinary>=1.44.1,<2
