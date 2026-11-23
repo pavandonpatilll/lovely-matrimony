@@ -1667,9 +1667,6 @@ def upload_profile_photo(
         firebase_sync_async()
         return {"status":True,"message":"Profile Photo Uploaded Successfully","photo":photo_url}
     except Exception as e:
-        try:
-            if 'filepath' in locals() and os.path.exists(filepath): os.remove(filepath)
-        except Exception: pass
         return {"status":False,"message":"Unable to upload photo."}
     finally:
         try: photo.file.close()
