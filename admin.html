@@ -1068,7 +1068,7 @@ const API="https://lovely-matrimony-q4vn.onrender.com";
 function pmAdminPhotoUrl(value){
   if(!value)return "";
   const v=String(value).trim();
-    return /^https?:\/\//i.test(v)?v:(API+(v.startsWith("/")?v:"/"+v));
+    return /^https?:\/\//i.test(v)||v.startsWith("data:")||v.startsWith("blob:")?v:(API+(v.startsWith("/")?v:"/"+v));
 }
 const pmAdminNativeFetch=window.fetch.bind(window);
 window.fetch=async function(input,init={}){

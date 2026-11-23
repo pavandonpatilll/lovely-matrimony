@@ -156,13 +156,20 @@ def init_firebase():
 
         # Firebase Storage is optional because the project must have Storage/billing enabled.
         if firebase_storage is not None:
-            try:
-                firebase_bucket = firebase_storage.bucket()
-                FIREBASE_STORAGE_ENABLED = True
-            except Exception as storage_error:
+            configured_bucket = (os.getenv("FIREBASE_STORAGE_BUCKET", "").strip()
+                                 or str(info.get("storageBucket", "")).strip())
+            if configured_bucket:
+                try:
+                    firebase_bucket = firebase_storage.bucket(configured_bucket)
+                    FIREBASE_STORAGE_ENABLED = True
+                except Exception as storage_error:
+                    firebase_bucket = None
+                    FIREBASE_STORAGE_ENABLED = False
+                    print("Firebase Storage unavailable (Cloudinary remains primary for profile photos):", storage_error)
+            else:
+                # Storage is optional; do not attempt a default bucket when none is configured.
                 firebase_bucket = None
                 FIREBASE_STORAGE_ENABLED = False
-                print("Firebase Storage unavailable (local upload fallback):", storage_error)
         return True
     except Exception as e:
         print("Firebase init warning:", e)
@@ -193,6 +200,7 @@ try:
             secure=True
         )
         CLOUDINARY_ENABLED = True
+        print("Cloudinary profile storage: enabled")
 except Exception as _cloudinary_error:
     print("Cloudinary unavailable; existing profile-photo storage fallback:", _cloudinary_error)
 
@@ -211,6 +219,7 @@ def store_profile_photo_bytes(content, filename, content_type):
         url = result.get("secure_url")
         if not url:
             raise RuntimeError("Cloudinary did not return a secure image URL")
+        print("Profile photo stored on Cloudinary:", result.get("public_id", "uploaded"))
         return url
 
     # Backward-compatible fallback if Cloudinary is not configured.
@@ -242,10 +251,10 @@ def delete_stored_media(media_url, local_dir=None):
         if "res.cloudinary.com" in media_url and CLOUDINARY_ENABLED:
             path_part = media_url.split("/upload/", 1)[-1]
             parts = path_part.split("/")
-            if parts and re.fullmatch(r"v\\d+", parts[0]):
+            if parts and re.fullmatch(r"v\d+", parts[0]):
                 parts = parts[1:]
             if parts:
-                public_id = re.sub(r"\\.[A-Za-z0-9]+$", "", "/".join(parts))
+                public_id = re.sub(r"\.[A-Za-z0-9]+$", "", "/".join(parts))
                 if public_id:
                     cloudinary.uploader.destroy(public_id, resource_type="image", invalidate=True)
             return
@@ -1146,8 +1155,21 @@ if admin is None:
 firebase_restore_if_empty()
 
 def active_user(user_id):
-    cursor.execute("SELECT * FROM users WHERE id=? AND COALESCE(is_deleted,0)=0", (int(user_id),))
-    return cursor.fetchone()
+    """Use a request-local SQLite connection; never share the module cursor."""
+    db = None
+    try:
+        db = sqlite3.connect(DB_PATH, timeout=20)
+        db.row_factory = sqlite3.Row
+        return db.execute(
+            "SELECT * FROM users WHERE id=? AND COALESCE(is_deleted,0)=0",
+            (int(user_id),),
+        ).fetchone()
+    except (TypeError, ValueError, sqlite3.Error) as active_user_error:
+        print("Active user lookup warning:", active_user_error)
+        return None
+    finally:
+        if db is not None:
+            db.close()
 
 def ensure_active_user(user_id):
     return active_user(user_id) is not None

@@ -4022,9 +4022,7 @@ try{
 
   const photoUrl=(path)=>{
     if(!path)return "";
-    return String(path).startsWith("http")
-      ? String(path)
-      : window.PM_API+String(path);
+    return window.pmPhotoUrl(path);
   };
 
   window.pmFullPhotos=allPhotos.map(x=>photoUrl(x.photo)).filter(Boolean);
@@ -4214,7 +4212,7 @@ pulsePresence();
 
 <script>
 const PM_API=window.PM_API||"https://lovely-matrimony-q4vn.onrender.com";
-function pmUrl(p){return p?(p.startsWith("http")?p:PM_API+p):""}
+function pmUrl(p){return p?window.pmPhotoUrl(p):""}
 async function pmLoadGallery(){const uid=localStorage.getItem("userId"),box=document.getElementById("pmPhotoGrid");if(!uid||!box)return;box.innerHTML="<div style='grid-column:1/-1;text-align:center;padding:20px'>Loading photos…</div>";try{const d=await (await fetch(PM_API+"/profile-full/"+uid)).json();if(!d.status)return box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#777">Refreshing photos…</div>';box.innerHTML=(d.photos||[]).map(p=>`<div class="pmPhotoItem"><img src="${pmUrl(p.photo)}">${p.is_main?'<span class="pmPhotoBadge">MAIN</span>':''}<div class="pmPhotoActions">${!p.is_main&&p.id?`<button onclick="pmSetMain(${p.id})">⭐</button>`:''}${p.id?`<button onclick="pmDeletePhoto(${p.id})">🗑</button>`:''}</div></div>`).join("")||"<div style='grid-column:1/-1;text-align:center;padding:20px'>No photos yet</div>"}catch(e){box.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:#777">Refreshing photos…</div>';pmRetryLater("gallery",pmLoadGallery);}}
 async function pmUploadPhotos(input){const files=Array.from(input.files||[]);if(!files.length)return;const uid=localStorage.getItem("userId");if(!uid)return alert("Please login first.");const fd=new FormData();files.slice(0,4).forEach(f=>fd.append("photos",f));try{const d=await (await fetch(PM_API+"/upload-profile-photos/"+uid,{method:"POST",body:fd})).json();alert(d.message||"Photos uploaded");input.value="";pmLoadGallery();if(typeof loadProfile==="function")loadProfile()}catch(e){alert("Unable to upload photos.")}}
 async function pmDeletePhoto(id){if(!confirm("Delete this photo?"))return;const uid=localStorage.getItem("userId");const d=await (await fetch(PM_API+"/delete-profile-photo/"+uid,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo_id:id})})).json();alert(d.message);if(d.status)pmLoadGallery()}
