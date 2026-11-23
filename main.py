@@ -178,8 +178,10 @@ init_firebase()
 # mirror; existing Firebase/local media storage remains available as fallback.
 CLOUDINARY_ENABLED = False
 try:
-    import cloudinary
-    import cloudinary.uploader
+    import importlib
+
+    cloudinary = importlib.import_module("cloudinary")
+    importlib.import_module("cloudinary.uploader")
     _cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
     _cloud_api_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
     _cloud_api_secret = os.getenv("CLOUDINARY_API_SECRET", "").strip()
