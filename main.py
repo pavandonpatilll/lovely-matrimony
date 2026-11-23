@@ -15,6 +15,8 @@ import threading
 import time
 import datetime
 import secrets
+import io
+import re
 import urllib.request
 import urllib.error
 from urllib.parse import quote, unquote
@@ -172,6 +174,53 @@ def init_firebase():
 
 init_firebase()
 
+# Cloudinary stores profile photos durably. Firebase remains the database/auth
+# mirror; existing Firebase/local media storage remains available as fallback.
+CLOUDINARY_ENABLED = False
+try:
+    import cloudinary
+    import cloudinary.uploader
+    _cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    _cloud_api_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
+    _cloud_api_secret = os.getenv("CLOUDINARY_API_SECRET", "").strip()
+    if _cloud_name and _cloud_api_key and _cloud_api_secret:
+        cloudinary.config(
+            cloud_name=_cloud_name,
+            api_key=_cloud_api_key,
+            api_secret=_cloud_api_secret,
+            secure=True
+        )
+        CLOUDINARY_ENABLED = True
+except Exception as _cloudinary_error:
+    print("Cloudinary unavailable; existing profile-photo storage fallback:", _cloudinary_error)
+
+
+def store_profile_photo_bytes(content, filename, content_type):
+    """Upload original profile image bytes to Cloudinary without resizing/compression transforms."""
+    if CLOUDINARY_ENABLED:
+        result = cloudinary.uploader.upload(
+            io.BytesIO(content),
+            folder="prem-milan/profile",
+            resource_type="image",
+            use_filename=False,
+            unique_filename=True,
+            overwrite=False
+        )
+        url = result.get("secure_url")
+        if not url:
+            raise RuntimeError("Cloudinary did not return a secure image URL")
+        return url
+
+    # Backward-compatible fallback if Cloudinary is not configured.
+    firebase_url = store_uploaded_bytes(content, "profile", filename, content_type)
+    if firebase_url:
+        return firebase_url
+    filepath = os.path.join(PROFILE_UPLOADS_DIR, filename)
+    with open(filepath, "wb") as f:
+        f.write(content)
+    return f"/uploads/profile/{filename}"
+
+
 def store_uploaded_bytes(content, folder, filename, content_type):
     """Store media in Firebase Storage when available; otherwise keep the existing local upload path."""
     if FIREBASE_STORAGE_ENABLED and firebase_bucket is not None:
@@ -188,6 +237,16 @@ def delete_stored_media(media_url, local_dir=None):
     if not media_url:
         return
     try:
+        if "res.cloudinary.com" in media_url and CLOUDINARY_ENABLED:
+            path_part = media_url.split("/upload/", 1)[-1]
+            parts = path_part.split("/")
+            if parts and re.fullmatch(r"v\\d+", parts[0]):
+                parts = parts[1:]
+            if parts:
+                public_id = re.sub(r"\\.[A-Za-z0-9]+$", "", "/".join(parts))
+                if public_id:
+                    cloudinary.uploader.destroy(public_id, resource_type="image", invalidate=True)
+            return
         if media_url.startswith("https://firebasestorage.googleapis.com/") and FIREBASE_STORAGE_ENABLED and firebase_bucket is not None:
             marker = "/o/"
             if marker in media_url:
@@ -1494,12 +1553,7 @@ def upload_profile_photos(user_id:int, photos:list[UploadFile]=File(...)):
                 continue
             filename=f"{uuid.uuid4().hex}{ext}"
             content_type=getattr(upload, "content_type", None) or "image/jpeg"
-            url=store_uploaded_bytes(content, "profile", filename, content_type)
-            if not url:
-                filepath=os.path.join(PROFILE_UPLOADS_DIR,filename)
-                with open(filepath,"wb") as f:
-                    f.write(content)
-                url=f"/uploads/profile/{filename}"
+            url=store_profile_photo_bytes(content, filename, content_type)
             cursor.execute("SELECT COUNT(*) FROM profile_photos WHERE user_id=?",(user_id,))
             has_any = cursor.fetchone()[0] > 0
             is_main = 0 if has_any else 1
@@ -1596,19 +1650,14 @@ def upload_profile_photo(
         if len(content)>8*1024*1024:
             return {"status":False,"message":"Photo must be below 8 MB."}
         filename=str(uuid.uuid4())+ext
-        filepath=os.path.join(PROFILE_UPLOADS_DIR,filename)
-        with open(filepath,"wb") as buffer:
-            buffer.write(content)
-        photo_url="/uploads/profile/"+filename
+        content_type=getattr(photo, "content_type", None) or "image/jpeg"
+        photo_url=store_profile_photo_bytes(content, filename, content_type)
 
-        # Remove previous main-photo record and file.
+        # Remove previous main-photo record and stored asset.
         cursor.execute("SELECT photo FROM profile_photos WHERE user_id=? AND is_main=1 LIMIT 1",(user_id,))
         old_main=cursor.fetchone()
         if old_main and old_main["photo"] and old_main["photo"] != photo_url:
-            old_path=os.path.join(BASE_DIR,old_main["photo"].lstrip("/"))
-            try:
-                if os.path.isfile(old_path): os.remove(old_path)
-            except Exception: pass
+            delete_stored_media(old_main["photo"], PROFILE_UPLOADS_DIR)
         cursor.execute("DELETE FROM profile_photos WHERE user_id=? AND is_main=1",(user_id,))
         cursor.execute("INSERT INTO profile_photos(user_id,photo,is_main) VALUES(?,?,1)",(user_id,photo_url))
         cursor.execute("UPDATE users SET photo=? WHERE id=?",(photo_url,user_id))

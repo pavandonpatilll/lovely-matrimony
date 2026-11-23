@@ -682,7 +682,7 @@ async function loadPremiumUsers(){
                 <td>
 
                 <img
-                src="${user.photo ? API+user.photo : ''}"
+                src="${user.photo ? pmAdminPhotoUrl(user.photo) : ''}"
                 style="
                 width:60px;
                 height:60px;
@@ -887,7 +887,7 @@ async function viewUser(userId){
         <div style="text-align:center;">
 
         <img
-        src="${user.photo ? API + user.photo : ''}"
+        src="${user.photo ? pmAdminPhotoUrl(user.photo) : ''}"
         style="
         width:120px;
         height:120px;
@@ -1065,6 +1065,11 @@ async function makePremium(userId){
 }
 
 const API="https://lovely-matrimony-q4vn.onrender.com";
+function pmAdminPhotoUrl(value){
+  if(!value)return "";
+  const v=String(value).trim();
+    return /^https?:\/\//i.test(v)?v:(API+(v.startsWith("/")?v:"/"+v));
+}
 const pmAdminNativeFetch=window.fetch.bind(window);
 window.fetch=async function(input,init={}){
   let url=typeof input==="string"?input:(input&&input.url)||"";
@@ -1135,7 +1140,7 @@ return;
             <td>
 
             <img
-            src="${user.photo ? API+user.photo : ''}"
+            src="${user.photo ? pmAdminPhotoUrl(user.photo) : ''}"
             style="
             width:60px;
             height:60px;
